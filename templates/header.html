@@ -1,0 +1,175 @@
+{% load static %}
+
+ <!-- HEADER START -->
+ <header class="site-header header-style-2 mobile-sider-drawer-menu">
+    <div class=" main-bar-wraper  navbar-expand-lg ">
+        <div class="main-bar " >  
+                            
+            <div class="container clearfix " style="height: 59px;"> 
+                <div class="d-flex align-items-center justify-content-between w-100" style="height: 60px;">
+                <!--Logo section start-->
+                {% comment %} <div class="logo-header ">
+                    <div class="logo-header-inner logo-header-one">
+                        <a href="{% url 'home:home' %}">
+                            <img class="logo-pic-one" src="{% static 'usd-logo1.svg' %}" alt="Ultimate Smile Design official logo for Premium Aesthetic Dental Solutions">
+                        </a>
+                    </div>
+                </div>   
+
+             {% comment %} logo section start {% endcomment %}
+
+             <div class="new_logo_header">
+                    <a href="{% url 'home:home' %}">
+                        <img  src="{% static 'USD_NEW_LOGO.svg' %}" alt="Official logo of Ultimate Smile Design SVG vector graphic">
+                    </a>
+             </div>
+
+
+                <!--Logo section End-->
+
+                <!-- NAV Toggle Button -->
+                <button id="mobile-side-drawer" data-target=".header-nav" data-toggle="collapse" type="button" class="navbar-toggler collapsed order-2">
+                    <span class="sr-only">Toggle navigation</span>
+                    <span class="icon-bar icon-bar-first"></span>
+                    <span class="icon-bar icon-bar-two"></span>
+                    <span class="icon-bar icon-bar-three"></span>
+
+                </button> 
+
+                <!-- MAIN Vav -->
+                <div class="d-inline-block nav-animation header-nav navbar-collapse collapse   flex-1">
+                    
+                    <ul class="nav navbar-nav">
+                        <a href="{% url 'home:home' %}">
+                            <li class=""><span {% if request.path == '/' %}class="heasder_active cool"{% endif %}> Home</span>
+                            </li> 
+                        </a>
+                        {% comment %} <a href="{% url 'home:search_all_usd' %}">
+                            <li class=""><span {% if '/certified-dentists/' in request.path %}class="heasder_active cool"{% endif %}> About</span>
+                            </li> 
+                        </a> {% endcomment %}
+                        <a href="{% url 'home:search_all_usd' %}">
+                            <li class=""><span {% if '/certified-dentists/' in request.path %}class="heasder_active cool"{% endif %}> Find Dentist</span>
+                            </li> 
+                        </a>
+                        <a href="{% url 'virtualsmileAI:smile' %}">
+                            <li class=""><span {% if request.path == '/virtual-smile-try-on/' %}class="heasder_active cool"{% endif %}> Ultimate Smile AI</span>                       
+                            </li> 
+                        </a>
+                        <a href="{% url 'home:gallery' %}">
+                            <li class=""><span {% if request.path == '/gallery/' %}class="heasder_active cool"{% endif %}> Gallery</span>
+                            </li> 
+                        </a>
+                        <a href="{% url 'home:blogs' %}">
+                            <li class=""><span class="blogs"{% if request.path == '/blogs/' %}class="heasder_active cool"{% endif %} id="blogs"> Blogs</span>
+                            </li>                                                                
+                        </a>
+                        <a href="{% url 'home:contact' %}">
+                            <li class=""><span {% if request.path == '/contact/' %}class="heasder_active cool"{% endif %}> Contact</span>                       
+                            </li> 
+                        </a>
+                        <li class="hea-shrink-btn">
+                            <a href="{% url 'home:verify_warranty' %}">
+                                <button type="submit" class="bat text-center hea-shrink-btn-inner">
+                                    Verify Warranty
+                                </button>
+                            </a>
+                        </li>      
+                        {% comment %} <li class="hea-shrink-btn">
+                            <a href="{% url 'home:dentist' %}">
+                                <button type="submit" class="bat text-center hea-shrink-btn-inner">
+                                    For Patients
+                                </button>
+                            </a>
+                        </li> {% endcomment %}
+                        <li class="hea-shrink-btn">
+                            <a href="{% url 'home:dentist_connect' %}">
+                                <button type="submit" class="bat text-center hea-shrink-btn-inner">
+                                    For Dentist
+                                </button>
+                            </a>
+                        </li>
+                    </ul>
+
+                </div>
+                
+                <!-- Header Right Section-->
+                <div class="extra-nav header-2-nav  flex-1">
+                    <div class="extra-cell">
+
+                        <!--Sign up-->
+                        
+                        {% comment %} {% if user.is_authenticated %}
+                        <a href="" class="site-button-link aon-btn-signup m-l20" >
+                            <i class="feather-user"></i> Dashboard
+                        </a>
+                        <a href="" class="site-button-link aon-btn-signup m-l20" >
+                            <i class="feather-lock"></i> Logout
+                        </a>
+                        <a href="{% url 'home:dentist' %}" class="site-button aon-add-listing m-l20" >
+                            <i class="fa fa-map-marker"></i>
+                         
+                            {{city}}
+                        </a> 
+                        {% else %} {% endcomment %}
+                        <!--<a href="{% url 'account:singup' %}" class="site-button-link aon-btn-signup m-l20" >-->
+                        <!--    <i class="feather-user"></i> Sign In-->
+                        <!--</a>-->
+                        <!--Add Listing up-->
+                        <a href="{% url 'home:verify_warranty' %}" method="GET" class="aon-add-listing m-l20 header-buttons bat">
+                            <p class="">Verify Warranty</p>
+                        </a>
+                        {% comment %} <a href="{% url 'home:dentist' %}" method="GET" class="aon-add-listing m-l20 header-buttons bat" onClick="localStorage.removeItem('selectedDoctor')">
+                            <p class="">For Patients</p>   
+                        </a> {% endcomment %}
+                        <a href="{% url 'home:dentist_connect' %}" method="GET" class="bat aon-add-listing m-l20 header-buttons ">
+                            <p class="">For Dentist</p>
+                        </a>
+                        {% comment %} {% endif %} {% endcomment %}
+
+                        </div>
+                        
+                    </div>                            
+                </div>
+            </div>    
+        
+        </div>
+    </div>
+</header>
+<!-- HEADER END -->
+
+<div class="d-none">
+    <p id="demo"></p>
+    {{city}} or
+    {{state}}
+</div>
+
+{% block js %}
+<script>
+    const navEl = document.querySelector('.main-bar');
+    window.addEventListener('scroll', () => {
+        if(window.scrollY >= 56){
+            navEl.classList.add('custom-header');
+        } else if(window.scrollY < 56) {
+            navEl.classList.remove('custom-header');
+        }
+    })
+
+    const currentPath = window.location.pathname;
+    const currentclass= document.getElementById("blogs");
+    const findDentistLink = document.querySelector("a[href='/certified-dentists/'] span");
+    let blogsId = currentPath.split("/")[2]
+    const m = ['heasder_active','cool']
+        if(currentPath == `/blogs/${blogsId}/`){
+            currentclass.classList.add(...m);
+        }else if(currentPath === `/blogs/`){
+            currentclass.classList.add(...m);
+        }else{
+            currentclass.classList.remove(...m);
+        }
+        if (currentPath.startsWith('/certified-dentists/')) {
+            findDentistLink.classList.add('heasder_active', 'cool');
+        }
+
+</script>
+{% endblock js %}

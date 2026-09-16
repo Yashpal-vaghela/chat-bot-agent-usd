@@ -1,0 +1,545 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en-IN">
+
+<head>
+   
+	<!-- META -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name='robots' content='index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' />
+    <!-- MOBILE SPECIFIC -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    {% block seo %} {% endblock %}	
+    <!-- FAVICONS ICON -->
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon_io/apple-touch-icon.png' %}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon_io/favicon-32x32.png' %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'favicon_io/favicon-16x16.png' %}">
+    <link rel="manifest" href="{% static 'favicon_io/site.webmanifest' %}">
+    <link rel="shortcut icon" href="{% static 'favicon_io/favicon.ico' %}" type="image/x-icon">
+    <!-- BOOTSTRAP STYLE SHEET -->
+    <link  href="{% static 'css/bootstrap.min.css' %}" rel="stylesheet">
+    <!-- FONTAWESOME STYLE SHEET -->
+    <link  href="{% static 'css/font-awesome.min.css' %}" rel="stylesheet">
+    <!-- Feather STYLE SHEET -->
+    <link rel="stylesheet" href="{% static 'css/updated-home.css' %}"  /> 
+    <link rel="stylesheet" href="{% static 'css/common.css' %}"  />  
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@flaticon/flaticon-uicons/css/all/all.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link href="{% static 'css/virtual-smile.css' %}" rel="stylesheet" >
+    <!-- montserrat font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+    href="https://fonts.googleapis.com/css2?family=Montserrat:wght@100;200;300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet"
+    >
+    <!-- OWL CAROUSEL STYLE SHEET -->
+    <link href="{% static 'css/owl.carousel.min.css' %}" rel="stylesheet">
+    <!-- FLATICON STYLE SHEET -->
+    <link href="{% static 'css/flaticon.min.css' %}" rel="stylesheet">
+    <!-- Lc light box popup -->
+    <link href="{% static 'css/lc_lightbox.css' %}" rel="stylesheet">     
+    <!-- Price Range Slider -->
+    <link href="{% static 'css/bootstrap-slider.min.css' %}" rel="stylesheet">
+    <!-- MAIN STYLE SHEET -->
+    <link href="{% static 'css/style.css' %}" rel="stylesheet">   
+    <!-- Swiper.js Style-->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <!-- aos animation -->
+    <link rel="stylesheet" href="https://unpkg.com/aos@next/dist/aos.css" />
+    <!-- ONNX Runtime & VAD for Voice Agent -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.7/dist/bundle.min.js"></script>
+    <script type="text/javascript">
+        (function(c,l,a,r,i,t,y){
+            c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+            t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+            y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+        })(window, document, "clarity", "script", "py74h28apv");
+    </script>
+    <!-- Meta pixel code -->
+    <script>
+        !function(f,b,e,v,n,t,s)
+        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+        n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t,s)}(window, document,'script',
+        'https://connect.facebook.net/en_US/fbevents.js');
+        fbq('init', '1892776207958490');
+        fbq('track', 'PageView');
+    </script>
+    <noscript>
+        <img height="1" width="1" style="display:none"
+        src="https://www.facebook.com/tr?id=1892776207958490&ev=PageView&noscript=1" />
+    </noscript>
+    <!-- End Meta Pixel Code -->
+     <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-EP4DTV49C9"></script>
+    <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-EP4DTV49C9');
+    </script>
+    <script type="application/ld+json">
+        {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Ultimate Smile Design",
+        "url": "https://ultimatesmiledesign.com/"
+        }
+    </script>
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": "Ultimate Smile Design",
+            "alternateName": "Ultimate Smile Design | Custom Smile Design by Expert Dentists",
+            "url": "https://ultimatesmiledesign.com/",
+            "logo": "https://ultimatesmiledesign.com/static/usdlog.webp",
+            "description": "Experience custom smile designing with Ultimate Smile Design. Connect with expert dentists across cities and book your personalized smile makeover appointment.",
+            "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "Plot No. 1 to 8, Marutidham Industrial Estate, Behind Hotel Royal, Velanja Road, Umra, Surat, Gujarat - 394130.",
+            "addressLocality": "Surat",
+            "addressRegion": "Gujarat",
+            "postalCode": "394130",
+            "addressCountry": "IN"
+            },
+            "contactPoint": {
+            "@type": "ContactPoint",
+            "telephone": "+91 84 69 88 88 77",
+            "contactType": "customer service",
+            "areaServed": ["IN"],
+            "availableLanguage": ["English","Hindi","Gujarati"]
+            },
+            "sameAs": [
+            "https://www.facebook.com/ultimate.smile.designing",
+            "https://www.instagram.com/ultimate_smile_design/",
+            "https://www.linkedin.com/company/ultimate-smile-designing-by-ade"
+            ]
+        }
+    </script>
+    {% block css %} {% endblock css %}
+</head>
+
+<body>
+    
+<!-- LOADING AREA START ===== -->
+<!--<div class="loading-area">-->
+<!--    <div class="loading-box"></div>-->
+<!--    <div class="loading-pic">-->
+<!--        <div class="cssload-wrap">-->
+<!--            <div class="cssload-container">-->
+<!--            <span class="cssload-dots"></span>-->
+<!--            <span class="cssload-dots"></span>-->
+<!--            <span class="cssload-dots"></span>-->
+<!--            <span class="cssload-dots"></span>-->
+<!--            <span class="cssload-dots"></span>-->
+<!--            <span class="cssload-dots"></span>-->
+<!--            <span class="cssload-dots"></span>-->
+<!--            <span class="cssload-dots"></span>-->
+<!--            <span class="cssload-dots"></span>-->
+<!--            <span class="cssload-dots"></span>-->
+<!--        </div>-->
+<!--        </div>-->
+<!--    </div>-->
+<!--</div>-->
+<!-- LOADING AREA  END ====== -->
+    
+	<div class="page-wraper">
+     
+       {% include 'header.html' %}
+        {% include 'chat_bot.html' %}
+        {% block body %}
+            
+        {% endblock body %}
+        {% comment %} {% include 'footer.html' %} {% endcomment %}
+
+        <!-- FOOTER START -->
+        <footer class="new-footer">
+            <div class="container">
+            
+                <div class="container new-footer-wrapper">
+                    <div class="row footer-links my-md-0 my-lg-3">
+                        <div class="col-lg-2 col-md-3 col-sm-4 col-4 footer-link">
+                            <a href="https://advancedentalexport.com/about-us/" target="_blank">
+                                <span data-hover="About ADE">About ADE </span>
+                                {% comment %} <img src="{% static 'footer-link-img.svg'%}" class="px-1 px-sm-2 img-fluid" /> {% endcomment %}
+                                <svg class="px-1 px-sm-2 img-fluid" width="12" height="12" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <g clip-path="url(#clip0_556_285)">
+                                <path d="M11.227 0H2.15898C1.73242 0 1.38555 0.346875 1.38555 0.773438C1.38555 1.2 1.73242 1.54688 2.15898 1.54688H9.35664L0.227734 10.6781C-0.0746094 10.9805 -0.0746094 11.4703 0.227734 11.7727C0.530078 12.075 1.01992 12.075 1.32227 11.7727L10.4512 2.64141V9.83906C10.4512 10.2656 10.798 10.6125 11.2246 10.6125C11.6512 10.6125 11.998 10.2656 11.998 9.83906V0.773438C12.0004 0.346875 11.6535 0 11.227 0Z" fill="white"/>
+                                </g>
+                                <defs>
+                                <clipPath id="clip0_556_285">
+                                <rect width="12" height="12" fill="white"/>
+                                </clipPath>
+                                </defs>
+                                </svg>
+                            </a>
+                        </div>
+                        <div class="col-lg-2 col-md-3 col-sm-4 col-4 footer-link">
+                            <a href="{% url 'home:search_all_usd' %}">
+                                <span data-hover="All Dentists">All Dentists </span>
+                                {% comment %} <img src="{% static 'footer-link-img.svg'%}" class="px-2 img-fluid" /> {% endcomment %}
+                                <svg class="px-1 px-sm-2 img-fluid" width="12" height="12" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <g clip-path="url(#clip0_556_285)">
+                                <path d="M11.227 0H2.15898C1.73242 0 1.38555 0.346875 1.38555 0.773438C1.38555 1.2 1.73242 1.54688 2.15898 1.54688H9.35664L0.227734 10.6781C-0.0746094 10.9805 -0.0746094 11.4703 0.227734 11.7727C0.530078 12.075 1.01992 12.075 1.32227 11.7727L10.4512 2.64141V9.83906C10.4512 10.2656 10.798 10.6125 11.2246 10.6125C11.6512 10.6125 11.998 10.2656 11.998 9.83906V0.773438C12.0004 0.346875 11.6535 0 11.227 0Z" fill="white"/>
+                                </g>
+                                <defs>
+                                <clipPath id="clip0_556_285">
+                                <rect width="12" height="12" fill="white"/>
+                                </clipPath>
+                                </defs>
+                                </svg>
+                            </a>
+                        </div>
+                        <div class="col-lg-2 col-md-3 col-sm-4 col-4 footer-link">
+                            <a href="https://advancedentalexport.com/ad-implant/" target="_blank">
+                                <span data-hover="ADE Implant">ADE Implant </span>
+                                {% comment %} <img src="{% static 'footer-link-img.svg'%}" class="px-2 img-fluid" /> {% endcomment %}
+                                <svg class="px-1 px-sm-2 img-fluid" width="12" height="12" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <g clip-path="url(#clip0_556_285)">
+                                <path d="M11.227 0H2.15898C1.73242 0 1.38555 0.346875 1.38555 0.773438C1.38555 1.2 1.73242 1.54688 2.15898 1.54688H9.35664L0.227734 10.6781C-0.0746094 10.9805 -0.0746094 11.4703 0.227734 11.7727C0.530078 12.075 1.01992 12.075 1.32227 11.7727L10.4512 2.64141V9.83906C10.4512 10.2656 10.798 10.6125 11.2246 10.6125C11.6512 10.6125 11.998 10.2656 11.998 9.83906V0.773438C12.0004 0.346875 11.6535 0 11.227 0Z" fill="white"/>
+                                </g>
+                                <defs>
+                                <clipPath id="clip0_556_285">
+                                <rect width="12" height="12" fill="white"/>
+                                </clipPath>
+                                </defs>
+                                </svg>
+                            </a>
+                        </div>
+                        <div class="col-lg-3 col-md-4 col-sm-5 col-5 footer-link">
+                            <a href="https://advancedentalexport.com/zirconia-crown/" target="_blank">
+                                <span data-hover="Advance Zirconia">Advance Zirconia </span>
+                                {% comment %} <img src="{% static 'footer-link-img.svg'%}" class="px-2 img-fluid"/> {% endcomment %}
+                                <svg class="px-1 px-sm-2 img-fluid" width="12" height="12" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <g clip-path="url(#clip0_556_285)">
+                                <path d="M11.227 0H2.15898C1.73242 0 1.38555 0.346875 1.38555 0.773438C1.38555 1.2 1.73242 1.54688 2.15898 1.54688H9.35664L0.227734 10.6781C-0.0746094 10.9805 -0.0746094 11.4703 0.227734 11.7727C0.530078 12.075 1.01992 12.075 1.32227 11.7727L10.4512 2.64141V9.83906C10.4512 10.2656 10.798 10.6125 11.2246 10.6125C11.6512 10.6125 11.998 10.2656 11.998 9.83906V0.773438C12.0004 0.346875 11.6535 0 11.227 0Z" fill="white"/>
+                                </g>
+                                <defs>
+                                <clipPath id="clip0_556_285">
+                                <rect width="12" height="12" fill="white"/>
+                                </clipPath>
+                                </defs>
+                                </svg>
+                            </a>
+                        </div>
+                        <div class="col-lg-3 col-md-4 col-sm-6 col-7 footer-link">
+                            <a href="https://advancedentalexport.com/aesthetic-maxima/" target="_blank">
+                                <span data-hover="Aesthetic Maxima-Emax">Aesthetic Maxima-Emax </span>
+                                {% comment %} <img src="{% static 'footer-link-img.svg'%}" class="px-2 img-fluid"/> {% endcomment %}
+                                <svg class="px-1 px-sm-2 img-fluid" width="12" height="12" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <g clip-path="url(#clip0_556_285)">
+                                <path d="M11.227 0H2.15898C1.73242 0 1.38555 0.346875 1.38555 0.773438C1.38555 1.2 1.73242 1.54688 2.15898 1.54688H9.35664L0.227734 10.6781C-0.0746094 10.9805 -0.0746094 11.4703 0.227734 11.7727C0.530078 12.075 1.01992 12.075 1.32227 11.7727L10.4512 2.64141V9.83906C10.4512 10.2656 10.798 10.6125 11.2246 10.6125C11.6512 10.6125 11.998 10.2656 11.998 9.83906V0.773438C12.0004 0.346875 11.6535 0 11.227 0Z" fill="white"/>
+                                </g>
+                                <defs>
+                                <clipPath id="clip0_556_285">
+                                <rect width="12" height="12" fill="white"/>
+                                </clipPath>
+                                </defs>
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="new-footer-content">
+                    <div class="overlay">
+                        <div class="container">
+                            <h2 class="new-footer-letter-title mt-4 mt-sm-0 mb-sm-4 mb-lg-4  mb-4">Subscribe Our Newsletter</h2>
+                            <form method="POST" action="{% url 'account:newsletter_subscribe' %}">
+                                {% csrf_token %}
+                                <div class="new-footer-letter-wrapper">  
+                                    <input type="email" name="email" class="form-control" placeholder="Enter Your Email"></input>
+                                    <button type="submit" class="sf-sb-btn-footer btn bat">Submit</button>
+                                    {% comment %} <button class="hello btn-3 hover-border-1"><span>Submit</span></button> {% endcomment %}
+                                </div>
+                            </form>
+                            <div class="new-footer-logo">
+                                <img src="{% static 'USD_NEW_LOGO.svg'%}" class="img-fluid" alt="Ultimate Smile Design official logo for Premium Aesthetic Dental Solutions"></img>
+                            </div>
+                            <div class="new-footer-social-links container pb-2">
+                                <ul class="footer-links">
+                                    <li class="footer-link">
+                                        <a target="_blank" href="https://www.instagram.com/ultimate_smile_design/">
+                                            <span data-hover="Instagram">Instagram </span>
+                                            {% comment %} <img src="{% static 'footer-link-img.svg'%}" class="px-2 img-fluid"/> {% endcomment %}
+                                            <svg class="px-2 img-fluid" width="12" height="12" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <g clip-path="url(#clip0_556_285)">
+                                            <path d="M11.227 0H2.15898C1.73242 0 1.38555 0.346875 1.38555 0.773438C1.38555 1.2 1.73242 1.54688 2.15898 1.54688H9.35664L0.227734 10.6781C-0.0746094 10.9805 -0.0746094 11.4703 0.227734 11.7727C0.530078 12.075 1.01992 12.075 1.32227 11.7727L10.4512 2.64141V9.83906C10.4512 10.2656 10.798 10.6125 11.2246 10.6125C11.6512 10.6125 11.998 10.2656 11.998 9.83906V0.773438C12.0004 0.346875 11.6535 0 11.227 0Z" fill="white"/>
+                                            </g>
+                                            <defs>
+                                            <clipPath id="clip0_556_285">
+                                            <rect width="12" height="12" fill="white"/>
+                                            </clipPath>
+                                            </defs>
+                                            </svg>
+                                        </a>
+                                    </li>
+                                    <li class="footer-link">
+                                        <a target="_blank" href="https://www.facebook.com/ultimate.smile.designing">
+                                            <span data-hover="Facebook">Facebook </span>
+                                            {% comment %} <img src="{% static 'footer-link-img.svg'%}" class="px-2 img-fluid"/> {% endcomment %}
+                                            <svg class="px-2 img-fluid" width="12" height="12" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <g clip-path="url(#clip0_556_285)">
+                                            <path d="M11.227 0H2.15898C1.73242 0 1.38555 0.346875 1.38555 0.773438C1.38555 1.2 1.73242 1.54688 2.15898 1.54688H9.35664L0.227734 10.6781C-0.0746094 10.9805 -0.0746094 11.4703 0.227734 11.7727C0.530078 12.075 1.01992 12.075 1.32227 11.7727L10.4512 2.64141V9.83906C10.4512 10.2656 10.798 10.6125 11.2246 10.6125C11.6512 10.6125 11.998 10.2656 11.998 9.83906V0.773438C12.0004 0.346875 11.6535 0 11.227 0Z" fill="white"/>
+                                            </g>
+                                            <defs>
+                                            <clipPath id="clip0_556_285">
+                                            <rect width="12" height="12" fill="white"/>
+                                            </clipPath>
+                                            </defs>
+                                            </svg>
+                                        </a>                              
+                                    </li>
+                                    <li class="footer-link">
+                                        <a target="_blank" href="https://www.linkedin.com/company/ultimate-smile-designing-by-ade">
+                                            <span data-hover="LinkedIn">LinkedIn </span>
+                                            {% comment %} <img src="{% static 'footer-link-img.svg'%}" class="px-2 img-fluid"/> {% endcomment %}
+                                            <svg class="px-2 img-fluid" width="12" height="12" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <g clip-path="url(#clip0_556_285)">
+                                            <path d="M11.227 0H2.15898C1.73242 0 1.38555 0.346875 1.38555 0.773438C1.38555 1.2 1.73242 1.54688 2.15898 1.54688H9.35664L0.227734 10.6781C-0.0746094 10.9805 -0.0746094 11.4703 0.227734 11.7727C0.530078 12.075 1.01992 12.075 1.32227 11.7727L10.4512 2.64141V9.83906C10.4512 10.2656 10.798 10.6125 11.2246 10.6125C11.6512 10.6125 11.998 10.2656 11.998 9.83906V0.773438C12.0004 0.346875 11.6535 0 11.227 0Z" fill="white"/>
+                                            </g>
+                                            <defs>
+                                            <clipPath id="clip0_556_285">
+                                            <rect width="12" height="12" fill="white"/>
+                                            </clipPath>
+                                            </defs>
+                                            </svg>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                    
+                        </div>
+                        <div class="new-footer-bottom">
+                            <span class="new-footer-copyright cool mb-0">Copyright 2026 | <a href="https://advancedentalexport.com/" target="_blank">Advance Dental Export.</a> All Rights Resevred</span>
+                        </div>
+                
+                    </div>
+                </div> 
+            </div>
+        </footer>
+        
+        {% comment %} <footer class="site-footer footer-light" >
+            <!-- FOOTER NEWSLETTER START -->  
+            <div class="footer-top-newsletter">
+                <div class="container">
+                    <div class="sf-news-letter">
+                        <span>Subscribe Our Newsletter</span>
+                        <form>
+                            <div class="sf-news-l-form">
+                                <input type="text" class="form-control-footer" placeholder="Enter Your Email">
+                                <button type="submit" class="sf-sb-btn-footer bat">Submit</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+
+            <!-- FOOTER BLOCKS START -->  
+            <div class="footer-top">
+                <div class="container">
+                    <div class="row">
+                       
+                        <!-- COLUMNS 1 -->
+                        <div class="col-md-4 col-sm-6 col-xs-6 text-center order-lg-first order-md-first">
+                            <div class="sf-site-link sf-widget-cities c1">
+                                <p class="aon-f-title cool">Quick Links</p>
+                                <ul class="foo-links">
+                                    <li><a href="https://advancedentalexport.com/about-us/" target="_blank" class="hover-link">About ADE</a></li>
+                                    <li><a href="{% url 'home:search_all_usd' %}" class="hover-link">Find Dentists</a></li>
+                                    <li><a href="{% url 'home:contact' %}" class="hover-link">Contact Us</a></li>
+                                    <li><a target="_blank" href="{% url 'home:dentist' %}" class="hover-link">Consultation</a></li>
+                                </ul>
+                            </div>
+                        </div>
+            
+                        <!-- COLUMNS 2 -->
+                        <div class="col-md-4 col-sm-12 col-xs-6 text-center  order-sm-first order-first ">
+                            <div class="sf-site-link sf-widget-link  ">
+                                    <div class="footer-logo">
+                                        <a href="{% url 'home:home' %}">
+                                            <img class="logo-pic-one " src="{% static 'usdlog.png' %}" alt="usdlogo">
+                                        </a>
+                                    </div>
+                                   
+                                <div class="social-container ">
+                                
+                                <ul class="aon-socila-icon d-flex align-items-center ">
+                        
+                                    <li><a href="https://www.facebook.com/profile.php?id=61560203902716&mibextid=ZbWKwL" class="hover-link"><i class="fa-brands fa-facebook-f"></i></a></li>
+                                    <li><a href="https://www.linkedin.com/company/ultimate-smile-designing-by-ade"><i class="fa-brands fa-linkedin" class="hover-link"></i></a></li>
+                                    <li><a href="https://www.instagram.com/ultimatesmiledesigningbyade?igsh=MWVuOThwb2dqeHlpMQ=="><i class="fa-brands fa-instagram" class="hover-link"></i></a></li>
+                                </ul>
+                            </div>
+                            </div>
+                        </div>
+            
+                        <!-- COLUMNS 3 --> 
+                        <div class="col-md-4 col-sm-6 col-xs-6 text-center order-5">
+                            <div class="sf-site-link sf-widget-categories">
+                                <p class="aon-f-title cool">Products Link</p>
+                                <ul class="foo-links">
+                                    <li><a target="_blank" href="https://advancedentalexport.com/ad-abutments/" class="hover-link">AD-Implant</a></li>
+                                    <li><a target="_blank" href="https://advancedentalexport.com/zirconia-crown/" class="hover-link">Advance Zirconia</a></li>
+                                    <li><a target="_blank" href="https://advancedentalexport.com/aesthetic-maxima/" class="hover-link">Aesthetic Maxima-Emax</a></li>
+                                </ul>
+                            </div>
+                        </div>
+
+            
+                    </div>
+                </div>
+            </div>
+            <!-- FOOTER BLOCKS END -->
+
+            
+            <!-- FOOTER COPYRIGHT -->
+            <div class="footer-bottom">
+                <div class="container">
+                    <div class="aon-footer-bottom-area">
+                    	<div class="aon-foo-copyright">
+                            <span class="cool">Copyright 2025 | Advance Dental Export. All Rights Resevred </span>
+                        </div>
+                    </div>
+                </div>   
+            </div>      
+        </footer> {% endcomment %}
+
+        <!-- FOOTER END -->
+
+        <!-- BUTTON TOP START -->
+		<button class="scroltop"><span class="fa fa-angle-up  relative" id="btn-vibrate"></span></button>
+
+ 	</div>
+
+    
+    
+<!-- JAVASCRIPT  FILES ========================================= --> 
+<script  src="{% static 'js/jquery-3.6.0.min.js' %}"></script><!-- JQUERY.MIN JS -->
+{% comment %} <script  src="{% static 'js/popper.min.js' %}"></script><!-- POPPER.MIN JS --> {% endcomment %}
+<script  src="{% static 'js/bootstrap.min.js' %}"></script><!-- BOOTSTRAP.MIN JS -->
+<script  src="{% static 'js/bootstrap-slider.min.js' %}"></script><!-- BOOTSTRAP Slider --> 
+<script  src="{% static 'js/isotope.pkgd.min.js' %}"></script><!-- MASONRY  -->
+<script  src="{% static 'js/lc_lightbox.lite.js' %}" ></script><!-- IMAGE POPUP -->
+<script  src="{% static 'js/custom.js' %}"></script><!-- CUSTOM FUCTIONS  -->
+<!-- Swiper.js CDN-->
+<script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js" defer></script>
+{% comment %} <script>
+    var x = document.getElementById("demo");
+
+    function getLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(showPosition);
+        } else {
+            x.innerHTML = "Geolocation is not supported by this browser.";
+        }
+    }
+
+    function showPosition(position) {
+        x.innerHTML =
+            "Latitude: " + position.coords.latitude + 
+            "<br>Longitude: " + position.coords.longitude;
+
+        if (sessionStorage.getItem("latitude") !== null) {
+            console.log("Session data exists!");
+        } else {
+            // Store latitude and longitude in sessionStorage
+            sessionStorage.setItem("latitude", position.coords.latitude);
+            sessionStorage.setItem("longitude", position.coords.longitude);
+
+            var latitude = sessionStorage.getItem("latitude");
+            var longitude = sessionStorage.getItem("longitude");
+
+            if (latitude && longitude) {
+                // Send the location data to the server
+                $.ajax({
+                    url: "/receive_location/", // URL of your Django view
+                    type: "POST",
+                    data: {
+                        latitude: latitude,
+                        longitude: longitude,
+                        csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(), // CSRF token is required for POST requests
+                    },
+                    success: function (response) {
+                        console.log("Data sent to server:", response);
+
+                        // Check if the server returned city and state
+                        if (response.status === "success") {
+                            const city = response.city || "unknown";
+                            const state = response.state || "unknown";
+
+                            // Store city and state in sessionStorage or localStorage
+                            sessionStorage.setItem("city", city);
+                            sessionStorage.setItem("state", state);
+
+                            // Optionally store in localStorage
+                            localStorage.setItem("city", city);
+                            localStorage.setItem("state", state);
+
+                            console.log("City and State saved:", { city, state });
+                        } else {
+                            console.error("Failed to retrieve city and state.");
+                        }
+                    },
+                    error: function (error) {
+                        console.error("Error sending data:", error);
+                    },
+                });
+            }
+
+            // Display confirmation dialog after storing location
+            setTimeout(() => {
+                Swal.fire({
+                    title: "Allow Your Location for Nearest Smile Designers.",
+                    showDenyButton: true,
+                    showCancelButton: false,
+                    confirmButtonText: "Yes",
+                    denyButtonText: "No",
+                    customClass: {
+                        popup: "custom-swal-popup"},
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        window.location.reload();
+                        localStorage.setItem('permission_access',JSON.parse(true))
+                    } else if (result.isDenied) {
+                        Swal.fire("Location not updated", "", "info");
+                    }
+                });
+            }, 5000);
+        }
+    }
+
+    getLocation();
+</script> {% endcomment %}
+
+
+
+    <!--Sweet alert after submit the request-->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+{% if messages %}
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+    {% for message in messages %}
+        Swal.fire({
+        position: "top-center",
+        icon: "{{ message.tags|cut:'safe' }}",
+        title: "{{ message|escapejs }}",
+        showConfirmButton: false,
+        timer: 2000
+        });
+    {% endfor %}
+    });
+    </script>
+{% endif %}
+{% block js %} {% endblock js %} 
+</body>
+</html>

@@ -1,0 +1,16 @@
+Django>=4.2
+django-ckeditor
+django-import-export
+geopy
+ultralytics
+opencv-python
+numpy
+pillow
+google-generativeai
+python-dotenv
+uvicorn
+fastapi
+daphne>=4.0.0
+websockets>=12.0
+httpx>=0.27.0
+django-json-widget

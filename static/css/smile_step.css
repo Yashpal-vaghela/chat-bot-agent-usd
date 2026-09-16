@@ -1,0 +1,614 @@
+
+
+.smile_step_Section .text_vec {
+  margin-bottom: 10px;
+}
+
+/* image card */
+/* .mainImageCard {
+  position: relative;
+  margin: 40px 0px;
+} */
+
+/* Step Text */
+
+/* .step_card {
+  margin-top: 12px;
+} */
+.point {
+  padding: 0 20px;
+}
+
+.line {
+  display: block;
+  width: 80%;
+  height: 2px !important;
+  border-radius: 4px;
+  background-color: #dcad81 !important ;
+}
+
+
+
+.s_heading2 {
+  font-family: "Gilda Display", serif;
+  font-size: 20px;
+}
+
+.s_subheading2 {
+  font-family: "Barlow", sans-serif;
+  font-size: 16px;
+  color: #666;
+}
+
+
+.Discover_subtext{
+  color: #C9C9C9;
+}
+
+/* images for steps */
+
+
+
+
+
+
+
+
+/* Resonsive design */
+
+
+@media (min-width: 601px) and (max-width: 992px) {
+
+
+ 
+ 
+
+}
+
+@media (max-width: 768px) {
+
+
+
+ 
+
+ 
+  .Discover_subtext{
+    width: 100%;
+  }
+}
+
+@media (max-width: 576px) {
+
+  
+
+
+
+  .point {
+    padding: 0 10px;
+  }
+
+  
+
+  .s_heading2 {
+    font-size: 16px;
+  }
+
+  .s_subheading2 {
+    font-family: "Barlow", sans-serif;
+    font-size: 14px;
+    color: #666;
+  }
+
+  
+  
+}
+
+
+/* -----------------------------------------Registration Page-------------------------------------------- */
+
+.registration_Patient {
+  position: relative;
+  background-color: white;
+  overflow: hidden;
+  padding: 50px 0px;
+}
+
+
+
+.inner_card {
+  /* margin: 50px 0px; */
+  background: transparent;
+  position: relative;
+}
+
+.registration_heading {
+  font-family: "Gilda Display", serif;
+  font-size: 36px;
+  color: #fff;
+  font-weight: 400; 
+  margin-bottom: 20px;
+  line-height: 1.4 !important;
+}
+
+
+.text_vec {
+  height: 8px;
+  width: 90px;
+  margin-bottom: 20px;
+}
+
+.registration_subtext {
+  font-family: "Barlow", sans-serif;
+  color: #666;
+  font-size: 16px;
+  padding: 0 50px;
+  font-weight: 600;
+}
+.loc-button-container {
+  width: 100%;
+  text-align: center;
+  margin: 25px 0px;
+}
+.loc_btn {
+  align-content: center;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 25px;
+  color: #000;
+  font-size: 14px;
+  font-family: "Barlow", sans-serif;
+  position: relative;
+}
+
+.loc_btn:hover {
+  color: #000;
+}
+
+@media (max-width: 768px) {
+  .registration_subtext {
+    padding: 0 20px;
+  }
+}
+
+@media (max-width: 576px) {
+ 
+}
+
+/* -----------------------------------------Registration Doctor-------------------------------------------- */
+
+.registration_Doctor {
+  background-color: white;
+  padding: 60px 0px;
+}
+
+.inner_card_doctor {
+  position: relative;
+  padding: 20px 0px;
+  border-radius: 25px;
+  background-color: #f7f5f0;
+  overflow: hidden;
+}
+
+.vec2_one {
+  position: absolute;
+  transform: scaleX(-1);
+  top: -30%;
+  left: 0%;
+}
+
+.vec2_two {
+  position: absolute;
+  bottom: -44%;
+  right: 0%;
+}
+
+.Doctor_subtext {
+  font-family: "Barlow", sans-serif;
+  color: #666;
+  font-size: 14px;
+  padding: 0 50px;
+  font-weight: 600;
+}
+
+@media (max-width: 576px) {
+  .Doctor_subtext {
+    font-size: 12px;
+  }
+  /* .vec2_two,.vec2_one{
+    display: none;
+  }
+  .inner_card_doctor{
+    background-color: white;
+    padding: 0px;
+  }
+  .registration_Doctor{
+    padding: 40px 0px 35px;
+  } */
+}
+
+
+/* ----------------------------------------- Banner Section -------------------------------------------- */
+/* .Banner_Section {
+  position: relative;
+   background-color: #000000;
+  overflow: hidden;
+  padding: 25px 0px 0px;
+} */
+
+/* .main-body-section {
+  margin-top: 120px;
+} */
+
+/* .banner_content {
+  margin-top: 12px;
+} */
+
+/* .banner-teeth-2 {
+  position: absolute;
+  height: 270px;
+  width: 270px;
+  z-index: 0;
+}
+
+.bg_1 {
+  top: -79%;
+  right: 6%;
+} */
+
+/* .banner_main_txt {
+  position: relative;
+  font-family: "Gilda Display", serif;
+  font-size: 40px;
+  font-weight: 500;
+  color: white;
+  z-index: 20;
+  margin-bottom: 0px;
+} */
+
+/* .banner_main_txt p{
+  margin-bottom: 0px;
+} */
+
+/* .banner_vector {
+  position: absolute;
+  bottom: 3%;
+  left: 45%; 
+  transform: translateX(-50%); 
+  width: 120%; 
+  max-width: none; 
+  z-index: -1; 
+} */
+
+  /* .banner_buttons {
+    margin-top: 50px;
+    width: 100%;
+    text-align: center;
+  } */
+
+/* .banner_btn {
+  align-content: center;
+  border: none;
+  border-radius: 15px;
+  padding: 13px 28px;
+  color: #000;
+  font-size: 14px;
+  font-family: "Barlow", sans-serif;
+  position: relative;
+  margin-left: 10px;
+}
+
+.banner_btn:hover {
+  color: #000;
+} */
+
+/* .search_function {
+  margin-top: 20px;
+  background-color: #2D2D2D;
+  border-radius: 15px;
+  width: 100%;
+} */
+
+
+
+/* .banner_field {
+  background-color: #2D2D2D;
+  border: none;
+} */
+/* @media(max-width:1200px){
+  .bg_1{
+    top:-75%;
+    right:-1%;
+    width:250px;
+    height:250px;
+  }
+} */
+/* @media (max-width: 991px) {
+  .banner_main_txt {
+    margin-bottom: 40px;
+  }
+  .banner-teeth-2 {
+    height: 200px;
+    width: 200px;
+  }
+  .bg_1 {
+    top: -56%;
+    right: -13%;
+  }
+} */
+
+/* @media (max-width: 768px) {
+  .banner_main_txt {
+    font-size: 30px;
+    margin-bottom: 40px;
+  }
+  .banner-teeth-2 {
+    height: 170px;
+    width: 170px;
+  }
+  .bg_1 {
+    top: -70%;
+  }
+} */
+
+/* @media (max-width: 575px) {
+  .banner_main_txt {
+    font-size: 20px;
+    margin-bottom: 30px;
+  }
+  .main-body-section {
+    margin-top: 80px;
+  }
+  .banner-teeth-2 {
+    height: 120px;
+    width: 120px;
+  }
+  .bg_1 {
+    top: -81%;
+    right: -4%;
+  }
+} */
+
+/* ----------------------------------------- Developer Section -------------------------------------------- */
+
+/* .Developer_Section {
+  background-color: #000000;
+  overflow: hidden;
+  padding: 25px 0px 0px;
+} */
+/* .Discover_heading {
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 500;
+  display: inline-block;
+  margin-bottom: 0px;
+  font-size: 21px;
+  margin-bottom: 20px;
+} */
+
+/* .Discover_Group {
+  padding: 40px 90px;
+} */
+
+/* animation */
+
+/* .usd_ring {
+  height: 130px;
+  width: 130px;
+  position: absolute;
+  top: 0%;
+  left: 12%;
+  animation: rotateRing 10s linear infinite;
+} */
+
+/* .smile_orange {
+  position: absolute;
+  width: 200px;
+  height: 177.78px;
+  bottom: 10%;
+  right: 4%;
+} */
+
+/* @keyframes rotateRing {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+} */
+
+/* discover card */
+/* .Discover_text {
+  font-family: "Gilda Display", serif;
+  font-size: 35px;
+  margin-top: 10px;
+  margin-bottom: 0px;
+  color: #ffffff;
+} */
+/* @media (max-width: 1200px) {
+  .Discover_text {
+    font-size: 30px;
+    margin-top: 0px;
+  }
+  .usd_ring {
+    top: -3.5%;
+    left: 5%;
+  }
+} */
+/* @media (max-width: 992px) {
+  .usd_ring {
+    height: 130px;
+    width: 130px;
+    top: 0%;
+    left: 18%;
+  }
+  .smile_orange {
+    width: 200px;
+    height: 177.78px;
+    bottom: 10%;
+    right: 10%;
+  }
+  .mainImageCard {
+    text-align: center;
+  }
+  .Discover_heading {
+    font-size: 22px;
+  }
+  .Discover_heading br {
+    display: none;
+  }
+} */
+
+/* @media (max-width: 768px) {
+  .Discover_Group {
+    width: 100%;
+    height: auto;
+  }
+  .usd_ring {
+    height: 130px;
+    width: 130px;
+    top: 0%;
+    left: 8%;
+  }
+  .smile_orange {
+    width: 150px;
+    height: 133.33px;
+    bottom: 10%;
+    right: 10%;
+  }
+  .Discover_heading {
+    margin-bottom: 10px;
+    font-size: 20px;
+  }
+} */
+
+/* @media (max-width: 576px) {
+  .usd_ring {
+    height: 80px;
+    width: 80px;
+    top: 2%;
+    left: 12%;
+  }
+  .smile_orange{
+    width:115px;
+  }
+  .Discover_Group {
+    padding: 10px 0px;
+  }
+  .Discover_text {
+    font-size: 20px;
+  }
+  .Discover_heading {
+    margin-bottom: 10px;
+    font-size: 18px;
+  }
+} */
+
+/* ----------------------------------------- Before & After Section -------------------------------------------- */
+.beforeAndAfter_Section {
+  background-color: #f7f5f0;
+  padding: 50px 0px;
+}
+
+.beforeAndAfter_Section .swiper-container {
+  position: relative;
+  max-width: 95%;
+  margin: auto;
+}
+
+.beforeAndAfter_Section .swiper {
+  width: 100%;
+  padding: 50px 0px;
+}
+
+.beforeAndAfter_Section .swiper-slide {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.BAImg {
+  width: 100%;
+  height: auto;
+  border-radius: 20px;
+}
+
+.swiper-pagination-bullet-active {
+  background-color: #dcad81 !important;
+}
+
+.swiper-pagination-bullet {
+  background-color: black;
+}
+
+@media (max-width: 768px) {
+  .BAImg {
+    width: 303px;
+  }
+}
+
+/* ----------------------------------------- Testanomial Section -------------------------------------------- */
+
+.beforeAndAfter_Section1 {
+  background-color: #222222;
+  padding: 50px 0px;
+}
+.testimonials-section .text_vec {
+  height: 12px;
+  width: 117px;
+  margin-bottom: 20px;
+}
+
+.testimonials-section .Discover_subtext {
+  width: 65%;
+}
+.beforeAndAfter_Section1 .myswiper {
+  width: 100%;
+  max-width: 100%;
+  padding: 20px 0px;
+}
+
+.beforeAndAfter_Section1 .swiper-wrapper {
+  display: flex;
+}
+
+.beforeAndAfter_Section1 .swiper-slide {
+  background: #2d2d2d;
+  text-align: center;
+  font-size: 18px;
+  border-radius: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  height: 300px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  opacity: 0.5;
+  position: relative;
+}
+
+/* Style the active slide */
+.beforeAndAfter_Section1 .swiper-slide-active {
+  /* transform: scale(1.1); */
+  transform: translateY(-15px);
+  opacity: 1;
+  margin-bottom: 10px !important;
+}
+
+
+
+
+.bgreviw {
+  font-family: "Gilda Display", serif;
+  position: absolute;
+  color: #222222;
+  opacity: 0.2;
+  font-size: 500px;
+  height: 200px;
+  top: 0%;
+  left: 15%;
+}
+
+
+
+
