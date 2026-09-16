@@ -1,0 +1,62 @@
+{% load static %}
+ <!-- Search Bar -->
+ <div class="aon-search2-bar-wrap">
+    <div class="container">
+       <div class="aon-search2-row">
+          <form class="aon-search2-form no-p-lr row justify-content-between" method="GET" action="{% url 'home:search_all_usd' %}">
+              <div class="aon-search2-left">
+                  <div class="aon-search2-table">
+
+                      <div class="aon-search2-col aon-search-col">
+                          <div class="aon-inputicon-box"> 
+                              <input class="form-control sf-form-control" name="q" type="text" placeholder="Search doctors, clinics, hospitals, etc.">
+                              <i class="aon-input-icon feather-search"></i>
+                          </div>
+                      </div>
+
+                      <div class="aon-search2-col aon-category-col">
+                          <div class="aon-inputicon-box">
+                              <i class="aon-input-icon feather-map-pin"></i>
+                              <select class="form-select" name="city" aria-label="Default select example">
+                                  <option value="">Select Location</option>
+                                  
+                                  {% for ie in a_city %}
+                                  <option value="{{ie.id}}">{{ie.city}}</option>
+                                  {% endfor %}
+                                    
+                                  
+                              </select>
+
+                          </div>
+                      </div>
+
+                      <div class="aon-search2-col aon-search-btn">
+                          <button class="aon-search2-btn site-button bat" type="submit">Search</button>
+                      </div>
+                      
+                  </div>
+                      
+                  
+              </div>
+              
+              <div class="aon-search2-right a-s-auto  d-flex align-items-center justify-content-end">
+                  <div class="aon-search-btn-wrap">
+                        <a href="https://wa.link/k3n3w7">
+                          <span class="aon-search-advance-btn d-flex align-items-center" >
+                              <i class="feather-phone"></i>
+                              <strong>
+                                  
+                                       <span class="cool">Customer </span>
+                                
+                                       <span class="cool"> Support</span>
+                                 
+                              </strong>
+                          </span>
+                       </a>
+                  </div>
+              </div>
+          </form>
+      </div>
+    </div>
+  </div>
+<!-- Search Bar End -->   

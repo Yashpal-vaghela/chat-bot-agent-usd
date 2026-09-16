@@ -1,0 +1,175 @@
+{% extends 'base.html' %} {% load static %} {% block seo %}
+<title> Smile Design Before After | Ultimate Smile Design Gallery</title>
+<meta name="description" content="Explore smile design before after results. See how Ultimate Smile Design creates confident smiles on our patients. Don't just imagine, see the actual proof." />
+<link rel="canonical" href="https://ultimatesmiledesign.com/gallery/" />
+<meta property="og:image" content="{% static 'feature-2.webp' %}" />
+<meta property="og:image:secure_url" content="{% static 'feature-2.webp' %}" />
+<meta property="og:image:type" content="image/webp" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" /> 
+<meta property="og:locale" content="en_IN" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content=" Smile Design Before After | Ultimate Smile Design Gallery" />
+<meta property="og:description" content="Explore smile design before after results. See how Ultimate Smile Design creates confident smiles on our patients. Don't just imagine, see the actual proof."/>    
+<meta property="og:url" content="https://ultimatesmiledesign.com/gallery/" />
+{% endblock seo %} {% block header %} {% endblock header %} {% block css %} {% endblock css %} {% block body %} {% load static %}
+
+<!-- Content -->
+<div class="page-content">
+  <section class="breadcrumbs-section">
+    <div class="container">
+      <div class="breadcrumbs-path">
+        <a href="{% url 'home:home' %}"> Home </a>
+        <i class="fa fa-solid fa-angles-right"></i> Gallery
+      </div>
+      <h1 class="breadcrumbs-title bg-linear-gradient mb-0 fw-bold cool">
+        Smile Design Before After
+      </h1>
+    </div>
+  </section>
+  <!-- Search Bar -->
+  {% comment %} {% include 'searchbar.html' %} {% endcomment %}
+  <!-- Search Bar End -->
+
+  <!-- PRODUCT DETAILS -->
+  <div class="container">
+    <div class="row m-b30">
+      <div class="col-lg-12 col-md-12 m-b30">
+        <div class="p-4">
+          <div class="wt-box wt-product-gallery">
+            <div class="image-container d-none d-md-block">
+                {% for ie in gallery_rows %}
+                  {% if ie.type == "normal" %}
+                    <div class="row mb-4">
+                      <div class="col-lg-6 col-md-6 mb-3"
+                        {% if forloop.counter > 2 %}
+                          data-aos="fade-up"
+                          data-aos-duration="1500"
+                        {% endif %}
+                      >
+                        <img src="{{ ie.img1.image.url }}" class="image-item img-fluid w-100" alt="Image" />
+                      </div>
+                        {% if ie.img2 %}
+                          <div class="col-lg-6 col-md-6 mb-3"
+                            {% if forloop.counter > 2 %}
+                              data-aos="fade-up"
+                              data-aos-duration="1500"
+                            {% endif %}
+                          >
+                            <img src="{{ ie.img2.image.url }}" class="image-item img-fluid w-100">
+                          </div>
+                        {% endif %}
+                    </div>
+                  {% endif %}
+                  {% if ie.type == "vertical" %}
+                      <div class="row mb-3 align-items-start">
+
+                          {% if ie.reverse %}
+                              <!-- Blank Left -->
+                              <div class="col-lg-4"></div>
+
+                              <div class="col-lg-4 col-md-6 mb-3 vcol vcol-1"
+                                {% if forloop.counter > 2 %}
+                                  data-aos="fade-up"
+                                  data-aos-duration="1200"
+                                {% endif %}
+                              >
+                                  <img src="{{ ie.img1.image.url }}" class="img-fluid vertical-Image">
+                              </div>
+
+                              <div class="col-lg-4 col-md-6 mb-3 vcol vcol-2"
+                                {% if forloop.counter > 2 %}
+                                  data-aos="fade-up"
+                                  data-aos-duration="1400"
+                                {% endif %}
+                              >
+                                  <img src="{{ ie.img2.image.url }}" class="img-fluid vertical-Image">
+                              </div>
+
+                          {% else %}
+                              <div class="col-lg-4 col-md-6 mb-3 vcol vcol-1"
+                                {% if forloop.counter > 2 %}
+                                  data-aos="fade-up"
+                                  data-aos-duration="1200"
+                                {% endif %}
+                              >
+                                  <img src="{{ ie.img1.image.url }}" class="img-fluid vertical-Image">
+                              </div>
+
+                              <div class="col-lg-4 col-md-6 mb-3 vcol vcol-2"
+                                {% if forloop.counter > 2 %}
+                                  data-aos="fade-up"
+                                  data-aos-duration="1400"
+                                {% endif %}
+                              >
+                                  <img src="{{ ie.img2.image.url }}" class="img-fluid vertical-Image">
+                              </div>
+
+                              <!-- Blank Right -->
+                              <div class="col-lg-4"></div>
+                          {% endif %}
+
+                      </div>
+                  {% endif %}
+                {% endfor %}
+            </div>
+            <div class="image-container d-block d-md-none">
+              {% for item in mobile_items %}
+                <div class="row mb-3">
+                  <div class="col-12" data-aos="fade-up" data-aos-duration="1000">
+                    <img src="{{ item.img.image.url }}"
+                        class="img-fluid image-item w-100 {% if item.type == 'vertical' %}vertical-Image{% endif %}"
+                        alt="">
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- PRODUCT DETAILS -->
+</div>
+<!-- Content END-->
+{% endblock body %} {% block js %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const introSection = document.querySelector(".intro-section0");
+    let lastScrollTop = 0;
+    if (introSection !== null) {
+      window.addEventListener("scroll", function () {
+        let scrollTop = window.scrollY;
+
+        if (scrollTop > 100 && scrollTop > lastScrollTop) {
+          introSection.style.opacity = "0";
+          setTimeout(() => {
+            introSection.style.display = "none";
+          }, 300);
+        } else if (scrollTop < 600) {
+          introSection.style.display = "flex";
+          setTimeout(() => {
+            introSection.style.opacity = "1";
+          }, 100);
+        }
+        lastScrollTop = scrollTop;
+      });
+    }
+  });
+</script>
+<script src="https://unpkg.com/aos@next/dist/aos.js"></script>
+<script>
+  AOS.init({
+    offset: 100,
+  });
+</script>
+<script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "url": "https://ultimatesmiledesign.com/gallery/",
+    "name": "Before & After Transformation Gallery | Ultimate Smile Design",
+    "description": "Explore smile design before after results. See how Ultimate Smile Design creates confident smiles on our patients. Don't just imagine, see the actual proof."
+  }
+</script>
+{% endblock js %}

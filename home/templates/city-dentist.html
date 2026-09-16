@@ -1,0 +1,230 @@
+{% extends 'base.html' %} {% load static %}{% block header %}
+{% block seo%}
+<title>Best Dentists in {{city_name | capfirst}} for Smile Designing | ✅ USD Certified</title>
+<meta name="description" content="Find the best dentists in {{city_name | capfirst}} for smile designing treatment. Find top cosmetic dentists and qualified smile design experts near you in {{city_name | capfirst}}." />
+{% if data.number > 1 %}
+<link rel="canonical" href="https://ultimatesmiledesign.com/certified-dentists/city/{{city_name}}/?page={{data.number}}" />
+{% else %}
+<link rel="canonical" href="https://ultimatesmiledesign.com/certified-dentists/city/{{city_name}}/" />
+{% endif %}
+<meta property="og:image" content="{% static 'feature-2.webp'%}">
+<meta property="og:image:secure_url" content="{% static 'feature-2.webp'%}">
+<meta property="og:image:type" content="image/webp" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:locale" content="en_IN" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Best Dentists in {{city_name | capfirst}} for Smile Designing | ✅ USD Certified" />
+<meta property="og:description" content="Find the best dentists in {{city_name | capfirst}} for smile designing treatment. Find top cosmetic dentists and qualified smile design experts near you in {{city_name | capfirst}}." />
+<meta property="og:url" content="https://ultimatesmiledesign.com/certified-dentists/city/{{city_name}}/" />
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Best Dentists in {{city_name | capfirst}} for Smile Designing | ✅ USD Certified">
+<meta name="twitter:description" content="Find the best dentists in {{city_name | capfirst}} for smile designing treatment. Find top cosmetic dentists and qualified smile design experts near you in {{city_name | capfirst}}.">
+{% endblock seo%}
+{% endblock header %} {% block css %}
+<link rel="stylesheet" href="{% static 'css/findDentist.css'%}" />
+{% endblock css %} {% block body %}
+
+<div class="page-content">
+  <section class="breadcrumbs-section">
+    <div class="container">
+      <div class="breadcrumbs-path"> <a href="{% url 'home:home' %}"> Home </a> &nbsp;
+      <i class=" fa fa-solid fa-angles-right"></i> &nbsp; 
+      <a href="{% url 'home:search_all_usd' %}">Certified Dentists</a>&nbsp;
+      <i class=" fa fa-solid fa-angles-right"></i> &nbsp; {{city_name | capfirst}}
+      </div>
+      <h1 class="breadcrumbs-title bg-linear-gradient mb-0 fw-bold cool">Best Dentists in {{city_name | capfirst}} for Ultimate Smile Design</h1>
+    </div>
+  </section>
+  <section class="dentist-section">
+    <div class="container">
+      {% if data %}
+      <div class="row mt-4 mt-md-4 mt-sm-5">
+        {% for ie in data %}
+        <div class="col-lg-3 col-md-4 col-sm-4 col-12 mb-4">
+          <div class="dentist-content">
+            <div class="card">
+              <a href="{% url 'home:find_dentist_d' ie.slug %}">
+                {% if ie.dentist_image %}
+                <img
+                  src="{{ ie.dentist_image.url }}"
+                  class="img-fluid"
+                  alt="{{ ie.alt_text }}"
+                />
+                {% else %}
+                <img src="{% static 'noimage-team.webp' %}" alt="Image" />
+                {% endif %}
+              </a>
+
+              <div class="card-body text-end">
+                {% comment %} <h2 class="text-start">{{ie.name}}</h2>
+                <p class="text-start mb-0">{{ie.city}}</p> {% endcomment %}
+                <button class="btn bookAppoinment-btn w-100 bat" onclick="BookAppoinment({{ie.id}},'{{ie.name}}','{{ie.city}}')">
+                  Book Appointment
+                  {% comment %} <a href="#">Book Appointment</a> {% endcomment %}
+                  {% comment %} <a href="/account/dentist/" >Book Appointment</a> {% endcomment %}
+                </button>
+                <span class="cool d-inline-block">ADE Certified Dentist</span>
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-5 col-md-8 col-sm-8 col-12 mb-4">
+          <div class="dentist-content1">
+            <h2 class="mt-3 cool font-Glida-display d-inline-block">{{ie.name}}</h2>
+            <p class="fw-600" style="font-size: 1.125rem;">{{ie.city}}</p>
+            <p>{{ie.bio}}</p>
+            <p class="cool profile_btn"><a href="{% url 'home:find_dentist_d' ie.slug %}">View Profile <i class="fa-solid fa-angles-right" style="font-size:12px"></i></a></p>
+          </div>
+        </div>
+        <div class="col-lg-4 col-md-12 col-sm-12 col-12 mb-4">
+          <div class="dentist-content2">
+            {% if ie.iframe %}
+            <div style="filter: invert(90%) hue-rotate(180deg); width: 100%; height: 380px;">
+             {{ie.iframe | safe}} 
+            </div>
+             {% else %}
+            <p class="d-flex align-items-center justify-content-center h-100">
+              No Location Available
+            </p>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %} {% include 'pagination.html' %}
+      </div>
+      {% else %}
+      <h3 class="d-flex justify-content-center text-white">Not Found in {{city}}</h3>
+      {% endif %}
+    </div>
+  </section>
+</div>
+<!-- Content END-->
+
+{% endblock body %} {% block js %}
+<script>
+  function BookAppoinment(id,name){
+    const doctordata = {
+      id:id,
+      name:name,
+    }
+    localStorage.setItem('selectedDoctor',JSON.stringify(doctordata));
+    window.location.href="/consult-with-dentist/";
+  }
+</script>
+<script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebPage",
+        "@id": "https://ultimatesmiledesign.com/certified-dentists/city/{{city_name}}/",
+        "url": "https://ultimatesmiledesign.com/certified-dentists/city/{{city_name}}/",
+        "name": "Best Dentists in {{ city_name|capfirst }} for Smile Designing | ✅ USD certified",
+        "description": "Find the best dentists in {{ city_name|capfirst }}  for smile designing treatment. Find top cosmetic dentists and qualified smile design experts near you in {{ city_name|capfirst }}.",
+        "inLanguage": "en-IN",
+        "about": {
+          "@type": "MedicalProcedure",
+          "name": "Smile Designing Treatment",
+          "procedureType": "http://schema.org/NoninvasiveProcedure"
+        }
+      },
+      {
+        "@type": "ItemList",
+        "name": "Best Smile Design Dentists in {{ city_name|capfirst }}",
+        "description": "List of top densits in {{ city_name|capfirst }} specializing in cosmetic dentistry and smile designing treatment.",
+        "numberOfItems": "{{data.paginator.count}}",
+        "itemListElement": [
+          {% for ie in data %}
+          {
+            "@type": "ListItem",
+            "position": {{forloop.counter}},
+            "item": {
+              "@type": "Dentist",
+              "name": "{{ie.name}}",
+              "medicalSpecialty": "http://schema.org/Dentistry",
+              "address": {
+                "@type": "PostalAddress",
+                "addressLocality": "{{ie.city}}",
+                "addressRegion": "{{ie.state}}",
+                "addressCountry": "IN"
+              },
+              "areaServed": "{{ie.city}}",
+              "availableService": {
+                "@type": "MedicalProcedure",
+                "name": "Smile Designing Treatment"
+              }
+            }
+          }{% if not forloop.last %},{% endif %}
+          {% endfor %}
+        ]
+      },
+      {
+        "@type": "MedicalProcedure",
+        "name": "Smile Designing Treatment",
+        "alternateName": "Smile Design",
+        "procedureType": "http://schema.org/NoninvasiveProcedure",
+        "bodyLocation": "Teeth",
+        "howPerformed": "Smile designing involves analysis of tooth shape, alignment, color, and smile symmetry, followed by cosmetic and restorative dental procedures with the latest digital smile design methods.",
+        "preparation": "Dental examination, diagnostic analysis, and treatment planning.",
+        "followup": "Dental evaluation and smile assessment."
+      },
+      {
+        "@type": "MedicalOrganization",
+        "name": "Ultimate Smile Design",
+        "url": "https://ultimatesmiledesign.com/",
+        "logo": "https://ultimatesmiledesign.com/static/USD_NEW_LOGO.svg",
+        "areaServed": {
+          "@type": "City",
+          "name": "{{ city_name|capfirst }}"
+        }
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://ultimatesmiledesign.com/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Certified Dentists",
+            "item": "https://ultimatesmiledesign.com/certified-dentists/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "Certified Dentists in {{ city_name|capfirst }}",
+            "item": "https://ultimatesmiledesign.com/certified-dentists/city/{{city_name}}/"
+          }
+        ]
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "Service",
+        "serviceType": "Best Dentist in {{ city_name|capfirst }}",
+        "provider": {
+          "@type": "Organization",
+          "name": "Ultimate Smile Design",
+          "url": "https://ultimatesmiledesign.com/"
+        },
+        "areaServed": {
+          "@type": "Place",
+          "name": "{{ city_name|capfirst }}",
+          "address": {
+            "@type": "PostalAddress",
+            "addressLocality": "{{ city_name|capfirst }}",
+            "addressCountry": "IN"
+          }
+        }, 
+        "description": "Explore verified dentists in {{ city_name|capfirst }} near me offering expert digital smile design and customized smile design treatment. Get a complete list of best dentist in {{ city_name|capfirst }}.",
+        "url": "https://ultimatesmiledesign.com/certified-dentists/city/{{city_name}}/"
+      }
+    ]
+  }
+</script>
+{% endblock js %}

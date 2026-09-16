@@ -1,0 +1,295 @@
+{% extends 'base.html' %} 
+{% load static %} 
+{% block seo %}
+<title>Smile Design Before and After | Real Smile Makeover Results</title>
+<meta name="description" content="Explore real smile design before and after results. See how our expertly crafted modern smile makeover treatment creates confident smiles on our patients." />
+<link rel="canonical" href="https://ultimatesmiledesign.com/gallery/" />
+<meta property="og:image" content="{% static 'feature-2.webp' %}" />
+<meta property="og:image:secure_url" content="{% static 'feature-2.webp' %}" />
+<meta property="og:image:type" content="image/webp" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:locale" content="en_IN" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Smile Design Before and After | Real Smile Makeover Results" />
+<meta property="og:description" content="Explore real smile design before and after results. See how our expertly crafted modern smile makeover treatment creates confident smiles on our patients." />
+<meta property="og:url" content="https://ultimatesmiledesign.com/gallery/" />
+{% endblock seo %} 
+{% block header %} 
+{% endblock header %} 
+{% block css %}
+<link rel="stylesheet" href="{% static 'css/new-gallery.css' %}" />
+{% endblock css %} 
+{% block body %} 
+{% load static %}
+
+<!-- breadcrumbs -->
+<div class="page-content">
+  <section class="breadcrumbs-section">
+    <div class="container">
+      <div class="breadcrumbs-path">
+        <a href="{% url 'home:home' %}"> Home </a>
+        <i class="fa fa-solid fa-angles-right"></i> Gallery
+      </div>
+      <h1 class="breadcrumbs-title bg-linear-gradient mb-0 fw-bold cool">Gallery</h1>
+    </div>
+  </section>
+
+  <!-- Premium Cinematic Gallery Section -->
+  <section class="gallery-perspective">
+    <div class="gallery-sticky-wrapper">
+      <div class="gallery-overlay"></div>
+      <div class="gallery-container" id="galleryContainer">
+        {% for i in img %}
+        <div class="gallery-item item-{{ forloop.counter }}">
+          <img src="{{ i.image.url }}" alt="before-after-smile-design-img" />
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Gold Gradient END SVG -->
+      <div class="gallery-svg-container" style="background-color:black;">
+        <svg id="headlines" fill="none" stroke="url(#goldGradient)" stroke-width="3" viewBox="0 0 586 150">
+          <defs>
+            <linearGradient id="goldGradient" x1="0%" y1="0%" x2="50%" y2="50%">
+              <stop offset="0%" stop-color="#c3942f" />
+              <stop offset="18%" stop-color="#d89c27" />
+              <stop offset="37%" stop-color="#dfc86f" />
+              <stop offset="50%" stop-color="#e7dc96" />
+              <stop offset="64%" stop-color="#dfc86f" />
+              <stop offset="82%" stop-color="#d89c27" />
+              <stop offset="100%" stop-color="#c99c30" />
+            </linearGradient>
+          </defs>
+          <g id="txt2">
+            <path d="M210.7,1v16.2h-54.5v27h48.9v15.3h-48.9v27.3h56.2v16.2H139V1H210.7z" />
+            <path d="M311,1h17.2v102.1h-18.7l-57.8-74.5v74.5h-17.2V1h17.2L311,77.2V1z" />
+            <path d="M433.8,14.4c9.8,8.9,14.7,21.3,14.7,37.2c0,15.9-4.8,28.4-14.3,37.7c-9.5,9.2-24.1,13.9-43.8,13.9h-33.9V1h35C409.9,1,423.9,5.5,433.8,14.4z M431.1,52c0-23.4-13.4-35-40.1-35h-17.2v69.9h19.1c12.4,0,21.8-2.9,28.4-8.8C427.9,72.1,431.1,63.4,431.1,52z" />
+          </g>
+        </svg>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Image Lightbox Popup -->
+<div class="img-lightbox-overlay" id="imgLightbox" role="dialog" aria-modal="true" aria-label="Image Preview">
+  <button class="img-lightbox-close" id="imgLightboxClose" aria-label="Close">&times;</button>
+  <div class="img-lightbox-inner">
+    <img src="" alt="Gallery Preview" id="imgLightboxImg" />
+  </div>
+</div>
+
+{% endblock body %} 
+{% block js %}
+<!-- GSAP & ScrollTrigger CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+
+<script>
+  var _lightboxScrollY = 0;
+
+  function openLightbox(src, alt) {
+    var scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.paddingRight = scrollbarWidth + 'px';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    document.getElementById('imgLightboxImg').src = src;
+    document.getElementById('imgLightboxImg').alt = alt || '';
+    document.getElementById('imgLightbox').classList.add('active');
+    document.getElementById('imgLightboxClose').focus();
+  }
+
+  function closeLightbox() {
+    document.getElementById('imgLightbox').classList.remove('active');
+    document.getElementById('imgLightboxImg').src = '';
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
+  }
+
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('#imgLightboxClose')) { closeLightbox(); return; }
+    if (e.target.id === 'imgLightbox') { closeLightbox(); }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.getElementById('imgLightbox').classList.contains('active'))
+      closeLightbox();
+  });
+
+  document.addEventListener("DOMContentLoaded", function () {
+    gsap.registerPlugin(ScrollTrigger);
+    ScrollTrigger.config({
+      ignoreMobileResize: true
+    });
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (isTouchDevice) {
+      ScrollTrigger.normalizeScroll({
+        allowNestedScroll: true
+      });
+    }
+
+    const items = document.querySelectorAll(".gallery-item");
+    const tl = gsap.timeline({
+      scrollTrigger: {
+        trigger: ".gallery-perspective",
+        start: "top +80px",
+        end: "+=4000",
+        scrub: 1.5,
+        pin: true,
+        anticipatePin: 1,
+        invalidateOnRefresh: true,
+      },
+    });
+
+    items.forEach((item, index) => {
+      const zInitial = -2000 - index * 500;
+      const zFinal = 2000;
+      gsap.set(item, {
+        z: zInitial,
+        opacity: 1,
+        scale: 2,
+      });
+
+      tl.to(
+        item,
+        {
+          z: zFinal,
+          opacity: 1,
+          ease: "power1.inOut",
+        },
+        index * 0.12,
+      ).to(
+        item,
+        {
+          opacity: 0,
+          duration: 0.3,
+          ease: "power2.in",
+        },
+        index * 0.12 + 0.6,
+      );
+    });
+
+    // ── Gold 'END' SVG scroll animation ────────────────────────────────
+    const svgContainer = document.querySelector(".gallery-svg-container");
+    const svgPaths = document.querySelectorAll("#headlines path");
+    svgPaths.forEach(path => {
+      const length = path.getTotalLength();
+      path.style.strokeDasharray = length;
+      path.style.strokeDashoffset = length;
+    });
+
+    const lastItemIndex = items.length - 1;
+    const svgStartTime = lastItemIndex * 0.12 + 0.3;
+
+    tl.to(svgContainer, {
+      opacity: 1,
+      duration: 0.6,
+      ease: "power2.out"
+    }, svgStartTime);
+
+    svgPaths.forEach((path, pathIndex) => {
+      tl.to(path, {
+        strokeDashoffset: 0,
+        duration: 0.8,
+        ease: "power1.inOut"
+      }, svgStartTime + 0.1 + pathIndex * 0.15);
+    });
+
+    tl.fromTo(svgContainer, {
+      scale: 0.8,
+    }, {
+      scale: 1.1,
+      duration: 1.5,
+      ease: "power2.out"
+    }, svgStartTime);
+
+    items.forEach((item) => {
+      gsap.to(item, {
+        y: "random(-30, 30)",
+        x: "random(-30, 30)",
+        rotation: "random(-4, 4)",
+        duration: "random(3, 5)",
+        repeat: -1,
+        yoyo: true,
+        ease: "sine.inOut",
+      });
+    });
+
+    document.getElementById('galleryContainer').addEventListener('click', function (e) {
+      var clientX = e.clientX;
+      var clientY = e.clientY;
+      var matchedItems = [];
+
+      items.forEach(function (item) {
+        var opacity = parseFloat(window.getComputedStyle(item).opacity) || 0;
+        var zVal = parseFloat(gsap.getProperty(item, "z")) || 0;
+        if (opacity > 0.1 && zVal < 1100) {
+          var rect = item.getBoundingClientRect();
+          if (clientX >= rect.left && clientX <= rect.right &&
+            clientY >= rect.top && clientY <= rect.bottom) {
+            matchedItems.push(item);
+          }
+        }
+      });
+
+      if (matchedItems.length > 0) {
+        matchedItems.sort(function (a, b) {
+          var zA = parseFloat(gsap.getProperty(a, "z")) || 0;
+          var zB = parseFloat(gsap.getProperty(b, "z")) || 0;
+          return zB - zA;
+        });
+        var frontItem = matchedItems[0];
+        var img = frontItem.querySelector('img');
+        if (img) openLightbox(img.src, img.alt);
+      }
+    });
+
+    window.addEventListener("orientationchange", () => {
+      setTimeout(() => {
+        ScrollTrigger.refresh(true);
+      }, 250);
+    });
+
+  });
+</script>
+
+{% comment %} <script>
+document.addEventListener("contextmenu", e => e.preventDefault());
+document.addEventListener("keydown", function (e) {
+    if (e.key === "F12") {
+        e.preventDefault();
+    }
+    if (e.ctrlKey && e.shiftKey && e.key === "I") {
+        e.preventDefault();
+    }
+    if (e.ctrlKey && e.shiftKey && e.key === "J") {
+        e.preventDefault();
+    }
+    if (e.ctrlKey && e.shiftKey && e.key === "C") {
+        e.preventDefault();
+    }
+    if (e.ctrlKey && e.key === "u") {
+        e.preventDefault();
+    }
+});
+
+setInterval(() => {
+    const threshold = 160;
+    if (window.outerWidth - window.innerWidth > threshold || window.outerHeight - window.innerHeight > threshold) {
+        document.body.innerHTML = "";
+    }
+}, 1000);
+</script> {% endcomment %}
+
+<script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "url": "https://ultimatesmiledesign.com/gallery/",
+    "name": "Before & After Transformation Gallery | Ultimate Smile Design",
+    "description": "Explore our before & after smile design photo gallery showcasing stunning smile makeovers that highlight our commitment to aesthetic excellence."
+  }
+</script>
+{% endblock js %}

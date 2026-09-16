@@ -1,0 +1,162 @@
+{% extends 'base2.html' %}
+{% load static %}
+
+{% block header %}
+
+{% endblock header %}
+
+{% block css %}
+    
+{% endblock css %}
+    
+
+
+{% block body %}
+   
+<!-- LOADING AREA START ===== -->
+<div class="loading-area">
+    <div class="loading-box"></div>
+    <div class="loading-pic">
+        <div class="cssload-wrap">
+            <div class="cssload-container">
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+        </div>
+        </div>
+    </div>
+</div>
+<!-- LOADING AREA  END ====== -->
+
+	<div class="page-wraper cus-account-wrap">
+    
+        <header id="header-admin-wrap" class="header-admin-fixed">
+        
+            <!-- Header Start -->
+            <div id="header-admin">
+                <div class="container">
+                    
+                    <!-- Left Side Content -->
+                    <div class="header-left">
+                        <div class="cus-account-logo">
+                            <a href="{% url 'home:home' %}">
+                                <img src="{% static 'logo.png' %}" alt="">
+                            </a>
+                        </div>
+                    </div>
+                    <!-- Left Side Content End -->
+                    
+                    <!-- Right Side Content -->
+                    <div class="header-right">
+                        
+                        <ul class="header-widget-wrap">
+                            
+                            <li class="header-widget">
+                                <div class="aon-admin-messange sf-toogle-btn">
+                                    <span class="feather-user-pic"><img src="{% static 'images/user.jpg' %}" alt=""/></span>
+                                </div>
+                                <div class="ws-toggle-popup popup-tabs-wrap-section user-welcome-area">
+                                    <div class="popup-tabs-head d-flex justify-content-between align-items-center">
+                                        <div class="popup-tabHead-left"><h5 class="m-a0">David Wood</h5></div>
+                                    </div>
+                                    <ul class="user-welcome-list">
+                                        <li><a href="#"><i class="feather-sliders"></i> Dashboard</a></li>
+                                     
+                                        <li><a href="#"><i class="feather-settings"></i> Profile</a></li>
+                                        <li><a href="#"><i class="feather-log-out"></i> Log Out</a></li>
+                                    </ul>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                    <!-- Right Side Content End -->
+        
+                </div>
+            </div>
+            <!-- Header End -->
+        
+        </header>
+        
+        
+    	
+        <!-- Page Content Holder -->
+        <div id="content">
+            
+            <div class="cus-top-nav">
+                
+                <div class="container">
+    
+                    <ul class="cus-nav row">
+                        <li class="col "><a href="{% url 'account:customer' %}">Appointments</a></li>
+                        <li class="col active"><a href="{% url 'account:patient_review' %}">My Feedback</a></li>
+                        <li class="col"><a href="{% url 'account:patient_profile' %}">View/Edit Profile</a></li>
+                        <li class="col"><a href="{% url 'account:patient_password' %}">Change Password</a></li>
+                    </ul>
+                </div>
+                    
+            </div>
+
+            <div class="content-admin-main">
+                
+                <div class="aon-admin-heading">
+                    <h3>Feedback</h3>
+                </div>                    
+                <ul class="aon-feedback-list">
+                    <li class="aon-feedback-row">
+                        <div class="aon-feedback-head d-flex justify-content-between">
+                            <div class="aon-feedback-left">
+                                <div class="aon-feedback-date">
+                                    <span class="aon-day">18</span> 
+                                    <span class="aon-month">MAR</span> 
+                                    <span class="aon-year">2022</span>
+                                </div>
+                                <h4 class="aon-feedback-title"><i class="fa fa-user-md"></i> Daivid Chua</h4>
+                                <div class="aon-publish-label"><i class="feather-eye"></i> Published</div>
+                                <div class="aon-publish-label"><i class="feather-thumbs-up"></i> I recommended the doctor</div>
+                            </div>
+                            <div class="aon-feedback-right">
+                                <div class="dropdown action-dropdown dropdown-left">
+                                    <button type="button" class="action-button btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i class="fa fa-ellipsis-v"></i>
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li><a class="dropdown-item" href="javascript:;"><i class="feather-edit"></i> Edit</a></li>
+                                        <li><a class="dropdown-item" href="javascript:;"><i class="feather-trash"></i> Delete</a></li>                                            
+                                     
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                        </div>
+
+                        <div class="create-feedback-body">
+                            Simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.
+                            
+                        </div>
+                        <div class="create-feedback-footer"></div>
+                    </li>
+                    
+                </ul>
+
+        </div>
+            
+    	</div>
+
+ </div>       
+
+
+{% endblock body %}
+    
+
+
+{% block js %}
+
+{% endblock js %}
+    

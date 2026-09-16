@@ -1,0 +1,327 @@
+{% extends 'base2.html' %}
+{% load static %}
+
+{% block header %}
+
+{% endblock header %}
+
+{% block css %}
+    
+{% endblock css %}
+    
+
+
+{% block body %}
+   
+<!-- LOADING AREA START ===== -->
+<div class="loading-area">
+    <div class="loading-box"></div>
+    <div class="loading-pic">
+        <div class="cssload-wrap">
+            <div class="cssload-container">
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+            <span class="cssload-dots"></span>
+        </div>
+        </div>
+    </div>
+</div>
+<!-- LOADING AREA  END ====== -->
+
+	<div class="page-wraper cus-account-wrap">
+    
+        <header id="header-admin-wrap" class="header-admin-fixed">
+        
+            <!-- Header Start -->
+            <div id="header-admin">
+                <div class="container">
+                    
+                    <!-- Left Side Content -->
+                    <div class="header-left">
+                        <div class="cus-account-logo">
+                            <a href="{% url 'home:home' %}">
+                                <img src="{% static 'logo.png' %}" alt="">
+                            </a>
+                        </div>
+                    </div>
+                    <!-- Left Side Content End -->
+                    
+                    <!-- Right Side Content -->
+                    <div class="header-right">
+                        
+                        <ul class="header-widget-wrap">
+                            
+                            <li class="header-widget">
+                                <div class="aon-admin-messange sf-toogle-btn">
+                                    <span class="feather-user-pic"><img src="{% static 'images/user.jpg' %}" alt=""/></span>
+                                </div>
+                                <div class="ws-toggle-popup popup-tabs-wrap-section user-welcome-area">
+                                    <div class="popup-tabs-head d-flex justify-content-between align-items-center">
+                                        <div class="popup-tabHead-left"><h5 class="m-a0">David Wood</h5></div>
+                                    </div>
+                                    <ul class="user-welcome-list">
+                                        <li><a href="#"><i class="feather-sliders"></i> Dashboard</a></li>
+                                     
+                                        <li><a href="#"><i class="feather-settings"></i> Profile</a></li>
+                                        <li><a href="#"><i class="feather-log-out"></i> Log Out</a></li>
+                                    </ul>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                    <!-- Right Side Content End -->
+        
+                </div>
+            </div>
+            <!-- Header End -->
+        
+        </header>
+        
+        
+    	
+        <!-- Page Content Holder -->
+        <div id="content">
+            
+            <div class="cus-top-nav">
+                
+                <div class="container">
+    
+                    <ul class="cus-nav row">
+                        <li class="col "><a href="{% url 'account:customer' %}">Appointments</a></li>
+                        <li class="col "><a href="{% url 'account:patient_review' %}">My Feedback</a></li>
+                        <li class="col active"><a href="{% url 'account:patient_profile' %}">View/Edit Profile</a></li>
+                        <li class="col"><a href="{% url 'account:patient_password' %}">Change Password</a></li>
+                    </ul>
+                </div>
+
+                <div class="content-admin-main">
+                
+                    <div class="aon-admin-heading">
+                        <h3>Patient Registration</h3>
+                    </div>  
+                    
+                    <div class="card aon-card">
+                        <div class="card-body aon-card-body">
+                            <div class="cus-pai-regis-form row">
+                                <div class="cus-pai-regis-left col">
+                                    <div class="aon-pro-avtar-pic">
+                                                <div class="aon-proAvtar-media">
+                                                    <img src="{% static 'images/team/pic1.jpg' %}" alt="">
+                                                </div>
+                                                <button class="admin-button aon-proAvtar-btn has-toltip">
+                                                    <i class="fa fa-camera"></i>
+                                                    <span class="header-toltip">Upload Avtar</span>
+                                                </button>
+                                            </div>
+                                </div>
+                                <div class="cus-pai-regis-right col">
+                                    <div class="row">
+    
+                                        <div class="col-xl-4 col-lg-6 col-sm-6">
+                                            <div class="form-group">
+                                                <label>Patient Name</label>
+                                                <div class="aon-inputicon-box"> 
+                                                    <input class="form-control sf-form-control" name="company_name" type="text">
+                                                    <i class="aon-input-icon fa fa-user"></i>
+                                                </div>
+                                            </div>
+                                            <div class="form-group">Patient ID: PS <button type="button" class="sf-sm-btn-link"> Edit</button></div>
+                                        </div>
+                                        <div class="col-xl-4 col-lg-6 col-sm-6">
+                                            <div class="form-group">
+                                                <label>Mobile Number</label>
+                                                <div class="aon-inputicon-box"> 
+                                                    <input class="form-control sf-form-control" name="company_name" type="text">
+                                                    <i class="aon-input-icon fa fa-phone"></i>
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <div class="radio-inline-box">
+                                                    <div class="checkbox sf-radio-checkbox">
+                                                        <input id="lau1" name="abc" value="five" type="checkbox">
+                                                        <label for="lau1">SMS Notifications</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-xl-4 col-lg-6 col-sm-6">
+                                            <div class="form-group">
+                                                <label>Email Address</label>
+                                                <div class="aon-inputicon-box"> 
+                                                    <input class="form-control sf-form-control" name="company_name" type="text">
+                                                    <i class="aon-input-icon fa fa-user"></i>
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <div class="radio-inline-box">
+                                                    <div class="checkbox sf-radio-checkbox">
+                                                        <input id="En" name="abc1" value="five" type="checkbox">
+                                                        <label for="En">Email Notifications</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+    
+                                        <div class="col-xl-4 col-lg-6 col-sm-6">
+                                            <div class="form-group">
+                                                <label>Gender</label>
+                                                <div class="aon-inputicon-box"> 
+    
+                                                    <div class="radio-inline-box sf-radio-check-row">
+    
+                                                        <div class="checkbox sf-radio-checkbox sf-radio-check-2 sf-raChe-6">
+                                                            <input id="any111" name="abc" value="five" type="radio">
+                                                            <label for="any111">Male</label>
+                                                        </div>
+                                                        <div class="checkbox sf-radio-checkbox sf-radio-check-2 sf-raChe-6">
+                                                            <input id="body111" name="abc" value="five" type="radio">
+                                                            <label for="body111">Female</label>
+                                                        </div>
+    
+                                                    </div>
+    
+                                                </div>
+                                            </div>
+                                        </div>
+    
+                                        <div class="col-xl-4 col-lg-6 col-sm-12">
+                                            <div class="row">
+                                                <div class="col-sm-6">
+                                                    <div class="form-group">
+                                                        <label>DOB or Age</label>
+                                                        <div class="aon-inputicon-box"> 
+                                                            <input class="form-control sf-form-control" name="company_name" type="text" placeholder="DD / MM / YYYY">
+                                                            <i class="aon-input-icon fa fa-calendar"></i>
+                                                        </div>
+                                                    </div>
+                                                </div>
+    
+                                                <div class="col-sm-6">
+                                                    <div class="form-group">
+                                                        <label>Blood Group</label>
+                                                        <select class="form-select" aria-label="Default select example">
+                                                            <option>O +VE</option>
+                                                            <option>B +VE</option>
+                                                          </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+    
+                                        </div>
+    
+                                        <div class="col-xl-4 col-lg-6 col-md-6">
+                                            <div class="form-group">
+                                                <label>Language Preference</label>
+                                                <select class="form-select" aria-label="Default select example">
+                                                    <option>English</option>
+                                                    <option>Hindi</option>
+                                                  </select>
+                                            </div>
+                                        </div>
+    
+                                        <div class="col-xl-4 col-lg-6 col-sm-6">
+                                            <div class="form-group">
+                                                <label>Occupation</label>
+                                                <div class="aon-inputicon-box"> 
+                                                    <input class="form-control sf-form-control" name="company_name" type="text">
+                                                    <i class="aon-input-icon fa fa-user"></i>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-xl-4 col-lg-6 col-sm-6">
+                                            <div class="form-group">
+                                                <label>Groups</label>
+                                                <div class="aon-inputicon-box"> 
+                                                    <input class="form-control sf-form-control" name="company_name" type="text">
+                                                    <i class="aon-input-icon fa fa-group"></i>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-xl-4 col-lg-6 col-sm-6">
+                                            <div class="form-group">
+                                                <label>Referred By</label>
+                                                <div class="aon-inputicon-box"> 
+                                                    <input class="form-control sf-form-control" name="company_name" type="text">
+                                                    <i class="aon-input-icon fa fa-user"></i>
+                                                </div>
+                                            </div>
+                                        </div>
+    
+                                        <div class="col-xl-8 col-lg-6 col-sm-6">
+                                            <div class="form-group">
+                                                <label>Street Address</label>
+                                                <div class="aon-inputicon-box"> 
+                                                    <input class="form-control t-area-height" name="street address" type="text">
+                                                    <i class="aon-input-icon fa fa-map-marker"></i>
+                                                </div>
+                                            </div>
+                                        </div>
+    
+                                        <div class="col-xl-4 col-lg-12 col-sm-6">
+                                            <div class="row">
+                                                <div class="col-lg-6 col-md-6">
+                                                    <div class="form-group">
+                                                        <label>Pincode</label>
+                                                        <div class="aon-inputicon-box"> 
+                                                            <input class="form-control sf-form-control" name="company_name" type="text">
+                                                            <i class="aon-input-icon fa fa-info"></i>
+                                                        </div>
+                                                    </div>
+                                                </div>
+    
+                                                <div class="col-lg-6 col-sm-6">
+                                                    <div class="form-group">
+                                                        <label>City</label>
+                                                        <div class="aon-inputicon-box"> 
+                                                            <input class="form-control sf-form-control" name="company_name" type="text">
+                                                            <i class="aon-input-icon fa fa-building-o"></i>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                            </div>
+    
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="aon-admin-footer d-flex justify-content-between align-items-center">
+                        <div class="aon-admin-footer-left">
+                            <div class="alert alert-success" role="alert">This is a success alert—check it out!</div>
+                        </div>
+                        <div class="aon-admin-footer-right">
+                            <button class="admin-button m-r10">Cancel</button>
+                            <button class="admin-button">Save</button>
+                        </div>
+                    </div>
+     
+                </div>
+                    
+            </div>
+
+          </div>
+            
+    	</div>
+
+ </div>       
+
+
+{% endblock body %}
+    
+
+
+{% block js %}
+
+{% endblock js %}
+    

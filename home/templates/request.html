@@ -1,0 +1,219 @@
+{% extends 'base.html' %} {% load static %} {% block header %} 
+{% block seo %}
+<title>Consult with Certified USD Dentists | Schedule a Call</title>
+<meta name="description" content="Take a step toward beautiful smile. Consult with a certified USD dentist for Ultimate smile design treatment. Get expert advice in minutes." />
+<link rel="canonical" href="https://ultimatesmiledesign.com/consult-with-dentist/" />
+<meta property="og:image" content="{% static 'feature-2.webp' %}">
+<meta property="og:image:secure_url" content="{% static 'feature-2.webp' %}">
+<meta property="og:image:type" content="image/webp" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:locale" content="en_IN" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Consult with Certified USD Dentists | Schedule a Call" />
+<meta property="og:description" content="Take a step toward beautiful smile. Consult with a certified USD dentist for Ultimate smile design treatment. Get expert advice in minutes." />
+<meta property="og:url" content="https://ultimatesmiledesign.com/consult-with-dentist/" />
+{% endblock seo %}
+{% endblock header %} {% block css %}
+<link
+  href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
+  rel="stylesheet"
+/>
+
+{% endblock css %} {% block body %}
+<link rel="stylesheet" href="{% static 'css/contact.css' %}" />
+<link rel="stylesheet" href="{% static 'css/common.css' %}" />
+<link
+  rel="stylesheet"
+  href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
+  integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg=="
+  crossorigin="anonymous"
+  referrerpolicy="no-referrer"
+/>
+
+
+<div class="page-content" >
+<section class="breadcrumbs-section">
+        <div class="container">
+            <div class="breadcrumbs-path"> <a href="/"> Home&nbsp;</a> <i class=" fa fa-solid fa-angles-right"></i>&nbsp; Consult With Dentist </div>
+            <h1 class="breadcrumbs-title bg-linear-gradient mb-0 fw-bold cool">Consult with Expert Dentist Today</h1>
+        </div>
+    </section>
+  <section class="request-section d-flex justify-content-center align-items-center mt-5"  >
+    <div class="container position-relative">
+      <div class="request-img-section d-flex justify-content-center mx-auto">
+        {% comment %} <a href="/" style="display:contents">
+          <img class="img-fluid usd-logo-img" src="{% static 'usdlog.png' %}" alt="logo-img"/>
+        </a> {% endcomment %}
+        {% comment %} <a href="/"><i class="fa fa-solid fa-xmark cnacel_btn" ></i></a> {% endcomment %}
+        
+        <div class="request-content text-center d-block">
+          <div class="logo_main">
+            <img class="img-fluid" src="{% static 'USD_NEW_LOGO.svg' %}" alt="Official logo of Ultimate Smile Design SVG vector graphic"/>
+          </div>
+          
+          <p class="mb-0 cool mt-4">Please enter the details below for a call back.</p>
+
+          <form method="post" class="aon-login-form login-form form ">
+            {% csrf_token %}
+            <div class="row text-center justify-content-center">
+              <div class="col-lg-6">
+                {% comment %} <label class="form-label">First Name</label> {% endcomment %}
+                <div class="inputicon-box">
+                  <input
+                    class="form-control"
+                    name="first_name"
+                    type="text"
+                    placeholder="First Name"
+                    required
+                  />
+                  <i class="fa-solid fa-user"></i>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                {% comment %} <label class="form-label">Last Name</label> {% endcomment %}
+                <div class="inputicon-box">
+                  <input
+                    class="form-control"
+                    name="last_name"
+                    type="text"
+                    placeholder="Last Name"
+                    required
+                  />
+                  <i class="fa-solid fa-user"></i>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                {% comment %} <label class="form-label">Phone Number</label> {% endcomment %}
+                <div class="inputicon-box">
+                  <input
+                    class="form-control"
+                    name="phone"
+                    type="text"
+                    placeholder="Phone Number"
+                    required
+                  />
+                  <i class="fa-solid fa-phone"></i>
+                </div>
+              </div>
+              
+              <div class="col-lg-6">
+                {% comment %} <label class="form-label">Email</label> {% endcomment %}
+                <div class="inputicon-box">
+                  <input
+                    class="form-control"
+                    name="email"
+                    type="email"
+                    placeholder="Email"
+                    required
+                  />
+                  <i class="fa-solid fa-envelope"></i>
+                </div>
+              </div>
+              <div class="col-lg-12">
+                {% comment %} <label class="form-label">Phone Number</label> {% endcomment %}
+                <div class="inputicon-box">
+                  <input
+                    class="form-control"
+                    name="city"
+                    type="text"
+                    placeholder="Enter your city Name"
+                    required
+                  />
+                  <i class="fa-solid fa-location-dot"></i>
+                </div>
+              </div>
+              <div class="col-lg-12">
+                {% comment %} <label class="form-label">Phone Number</label> {% endcomment %}
+                <div class="inputicon-box">
+                  <i class="fa-solid fa-message"></i>
+                  <textarea class="form-control h-100" name="message" type="text" placeholder="Enter your message" rows="4"></textarea>
+                </div>
+              </div>
+              <div class="row" id="doctor-info">
+              </div>
+              <div class="col-12 d-flex align-items-center">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  name="agree_to_terms"
+                  required
+                  checked
+                />
+                <label class="mb-0 form-label">By submitting, you agree to receive messages or emails via the provided channel.</label>
+              </div>
+
+              {% comment %} <div class="col-lg-12">
+                <div class="g-recaptcha" data-sitekey="6LeNfq4rAAAAAMBnNy3uLYynCo2hDdx6vkuMfDl7"></div>
+              </div> {% endcomment %}
+              <div class="col-lg-3 col-md-4 col-sm-5 col-12">
+                <button type="submit" class=" request-button bat-form">submit</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+{% endblock body %} {% block js %}
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const doctordata = JSON.parse(localStorage.getItem('selectedDoctor'));
+  console.log("window", window, doctordata);
+
+  if(doctordata !== null && doctordata.name){
+    document.getElementById("doctor-info").innerHTML = `
+      <div class="col-lg-6 ps-0">
+        <div class="inputicon-box">
+          <!-- Hidden input: actually submitted -->
+          <input
+            type="hidden"
+            name="doctor_name"
+            value="${doctordata.name}"
+          />
+
+          <!-- Visible input: only for display -->
+          <input
+            class="form-control"
+            type="text"
+            value="${doctordata.name}"
+            readonly
+          />
+          <i class="fa-solid fa-user-doctor"></i>
+        </div>
+      </div>
+    `;
+  } else {
+    document.getElementById("doctor-info").classList.add('d-none');
+  }
+});
+
+
+</script>
+{% if messages %}
+<script>
+  {% for message in messages %}
+  Swal.fire({
+      position: 'top-end',
+      icon: 'success',
+      title: '{{ message }}',
+      showConfirmButton: false,
+      timer: 1500
+  });
+  {% endfor %}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "url": "https://ultimatesmiledesign.com/consult-with-dentist/",
+  "name": "Consult with Dentist - Personalized Dental Advice in Minutes",
+  "description": "Book a one-on-one consultation with certified dentists at Advance Dental Export. Get expert guidance on your dental restoration and treatment. Schedule now!"
+}
+</script>
+{% endif %} {% endblock js %}
