@@ -19,7 +19,6 @@ MULTILINGUAL_CITY_MAP = {
     "guwahati": "Guwahati", "guntur": "Guntur", "faridkot": "Faridkot",
     "sri ganganagar": "Sri Ganganagar", "ganganagar": "Sri Ganganagar", "malda": "Malda"
 }
-
 ALL_CERTIFIED_DOCTORS_LIST = [
     "Dr. Rakesh Patel", "Dr. Jigar P. Thakkar", "Dr. Ankit Mataliya", "Dr. Neerav Jhaveri", "Dr. Alap D Shah", "Dr. Abbas Noorani", "Dr. Purvesh Chauhan", "Dr. Ravi Shah", "Dr. Janu Shah",
     "Dr. Bharat R. Patel", "Dr. Parita Shah", "Dr. Viren K Savani", "Dr. Purvi Patel", "Dr. Priyanka Kathiriya", "Dr. Jay Patel",
