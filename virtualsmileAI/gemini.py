@@ -473,6 +473,8 @@ def generate_smile_design(input_path: str, output_path: str) -> None:
         ]
     }
 
+#---------------
+
     try:
         response = requests.post(url, json=payload, timeout=120)
     except Exception as e:
