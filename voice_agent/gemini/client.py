@@ -71,10 +71,10 @@ def log_live_voice_conversation(user_text, bot_text, slots):
 def append_to_live_log(msg):
     pass
 
-def sanitize_gemini_history(history):
+def sanitize_gemini_history(history, max_turns=12):
     if not isinstance(history, list):
         return []
-    sliced = history
+    sliced = history[-max_turns:] if len(history) > max_turns else history
     sanitized = []
     current_role = None
     current_parts = []
@@ -162,6 +162,7 @@ class GeminiClient:
                             "model": GEMINI_LIVE_MODEL,
                             "generationConfig": {
                                 "responseModalities": ["AUDIO"],
+                                "maxOutputTokens": 150,
                                 "speechConfig": {
                                     "voiceConfig": {
                                         "prebuiltVoiceConfig": {

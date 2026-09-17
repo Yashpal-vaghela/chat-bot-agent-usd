@@ -27,7 +27,7 @@ def load_prompt_templates(force_reload=False):
     return _cached_prompt_templates
 
 def get_system_prompt(force_reload=False):
-    prompts = load_prompt_templates(force_reload)
+    #prompts = load_prompt_templates(force_reload)
     knowledge = get_compiled_knowledge(force_reload)
     
     return f"""=========================================
@@ -316,9 +316,6 @@ This is your highest priority instruction. Every rule below overrides any confli
 Always use the Knowledge Base as the factual source.
 Select only the information needed to answer the user's question.
 Do not include additional details unless the user asks for them.
-=========================================
-
-{prompts}
 
 =========================================
 KNOWLEDGE BASE:

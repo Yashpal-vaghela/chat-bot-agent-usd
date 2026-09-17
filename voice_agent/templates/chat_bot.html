@@ -1344,9 +1344,22 @@
       }
   }
 
+  function resampleTo16k(inputData, inputSampleRate) {
+      if (!inputSampleRate || inputSampleRate === 16000) return inputData;
+      const ratio = inputSampleRate / 16000;
+      const newLength = Math.floor(inputData.length / ratio);
+      const result = new Float32Array(newLength);
+      for (let i = 0; i < newLength; i++) {
+          const origIndex = i * ratio;
+          const index = Math.floor(origIndex);
+          const decimal = origIndex - index;
+          const nextIndex = index + 1 < inputData.length ? index + 1 : index;
+          result[i] = inputData[index] * (1 - decimal) + inputData[nextIndex] * decimal;
+      }
+      return result;
+  }
+
   let vocalMasterNode = null;
-  let callAudioElement = null;
-  let callAudioDestination = null;
 
   async function initAudio() {
       if (!audioCtx) {
@@ -1455,20 +1468,6 @@
 
               // Master Output to AudioContext Destination
               masterCompressor.connect(audioCtx.destination);
-
-              // Output to MediaStream <audio> element to maintain Call Audio stream
-              callAudioDestination = audioCtx.createMediaStreamDestination();
-              masterCompressor.connect(callAudioDestination);
-
-              if (!callAudioElement) {
-                  callAudioElement = document.createElement('audio');
-                  callAudioElement.autoplay = true;
-                  callAudioElement.playsInline = true;
-                  callAudioElement.muted = true;
-                  callAudioElement.srcObject = callAudioDestination.stream;
-                  document.body.appendChild(callAudioElement);
-                  callAudioElement.play().catch(() => {});
-              }
 
               vocalMasterNode = inputNode;
           } catch (err) {
@@ -2324,18 +2323,16 @@
                       }
                   }
 
-                  const streamCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-                  window.currentStreamCtx = streamCtx;
-                  const source = streamCtx.createMediaStreamSource(globalStream);
+                  const source = audioCtx.createMediaStreamSource(globalStream);
 
                   // ⚡ HARDWARE ANTI-RUMBLE HIGH-PASS FILTER (Cuts out sub-80Hz electrical hum without cutting vocal fundamentals) ⚡
-                  const hpf = streamCtx.createBiquadFilter();
+                  const hpf = audioCtx.createBiquadFilter();
                   hpf.type = 'highpass';
                   hpf.frequency.value = 80; // 80Hz cutoff (preserves full human pitch range 85Hz - 8000Hz)
                   hpf.Q.value = 0.707;
 
                   // ⚡ VOCAL PRESENCE BOOST (Elevates speech clarity across 1.5kHz - 3.5kHz) ⚡
-                  const vocalBoost = streamCtx.createBiquadFilter();
+                  const vocalBoost = audioCtx.createBiquadFilter();
                   vocalBoost.type = 'peaking';
                   vocalBoost.frequency.value = 2200; // 2.2kHz speech center
                   vocalBoost.Q.value = 1.0;
@@ -2345,23 +2342,24 @@
                   hpf.connect(vocalBoost);
 
                   const bufferSize = 2048; // Low-latency 128ms streaming frames (Google AI Studio standard)
-                  const processor = streamCtx.createScriptProcessor(bufferSize, 1, 1);
-                  const analyser = streamCtx.createAnalyser();
+                  const processor = audioCtx.createScriptProcessor(bufferSize, 1, 1);
+                  const analyser = audioCtx.createAnalyser();
                   analyser.fftSize = 512;
 
-                  const silenceGain = streamCtx.createGain();
+                  const silenceGain = audioCtx.createGain();
                   silenceGain.gain.value = 0;
 
                   vocalBoost.connect(analyser);
                   vocalBoost.connect(processor);
                   processor.connect(silenceGain);
-                  silenceGain.connect(streamCtx.destination);
+                  silenceGain.connect(audioCtx.destination);
 
                   // ⚡ CONTINUOUS REAL-TIME AUDIO STREAMING TO GEMINI LIVE (Official Google AI Studio Flow) ⚡
                   processor.onaudioprocess = (e) => {
                       if (isMicSoftwareMuted) return;
 
-                      const inputData = e.inputBuffer.getChannelData(0);
+                      const rawInput = e.inputBuffer.getChannelData(0);
+                      const inputData = resampleTo16k(rawInput, audioCtx ? audioCtx.sampleRate : 48000);
                       const pcm16 = new Int16Array(inputData.length);
                       let sumSquares = 0;
                       for (let i = 0; i < inputData.length; i++) {
