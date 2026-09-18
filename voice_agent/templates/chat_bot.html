@@ -800,6 +800,8 @@
           sessionStorage.removeItem('usd_submission_id');
           sessionStorage.removeItem('usd_api_id');
           sessionStorage.removeItem('usd_is_voice_mode');
+          sessionStorage.removeItem('usd_used_modes');
+          sessionStorage.removeItem('usd_conversation_type');
       }
   } catch (e) {
       console.error("Reload check error:", e);
@@ -1584,8 +1586,34 @@
       }
   }
 
+  function recordConversationMode(mode) {
+      if (!mode) return sessionStorage.getItem('usd_conversation_type') || 'voice_agent';
+      let modes = [];
+      try {
+          modes = JSON.parse(sessionStorage.getItem('usd_used_modes') || '[]');
+      } catch (e) {
+          modes = [];
+      }
+      if (!modes.includes(mode)) {
+          modes.push(mode);
+          sessionStorage.setItem('usd_used_modes', JSON.stringify(modes));
+      }
+
+      let convType = 'voice_agent';
+      if (modes.includes('voice') && (modes.includes('chat') || modes.includes('call'))) {
+          convType = 'chat_voice_agent';
+      } else if (modes.includes('voice')) {
+          convType = 'voice_agent';
+      } else if (modes.includes('chat') || modes.includes('call')) {
+          convType = 'chat_agent';
+      }
+      sessionStorage.setItem('usd_conversation_type', convType);
+      return convType;
+  }
+
   function toggleChatMode() {
       isVoiceMode = !isVoiceMode;
+      recordConversationMode(isVoiceMode ? 'voice' : 'chat');
 
       const textControls = document.getElementById('usd-input-container');
       const voiceFooter = document.getElementById('usd-voice-controls-footer');
@@ -2089,6 +2117,7 @@
                   try { chatHistory = JSON.parse(savedHistStr); } catch (e) { chatHistory = []; }
               }
               isVoiceMode = sessionStorage.getItem('usd_is_voice_mode') !== 'false';
+              recordConversationMode(isVoiceMode ? 'voice' : 'chat');
 
               const textControls = document.getElementById('usd-input-container');
               const voiceFooter = document.getElementById('usd-voice-controls-footer');
@@ -2122,6 +2151,7 @@
               await startWebSocket();
           } else {
               isVoiceMode = true;
+              recordConversationMode('voice');
               const textControls = document.getElementById('usd-input-container');
               const voiceFooter = document.getElementById('usd-voice-controls-footer');
               const textMicBtn = document.getElementById('usd-text-mic-btn');
@@ -2357,6 +2387,7 @@
                   // ⚡ CONTINUOUS REAL-TIME AUDIO STREAMING TO GEMINI LIVE (Official Google AI Studio Flow) ⚡
                   processor.onaudioprocess = (e) => {
                       if (isMicSoftwareMuted) return;
+                      recordConversationMode('voice');
 
                       const rawInput = e.inputBuffer.getChannelData(0);
                       const inputData = resampleTo16k(rawInput, audioCtx ? audioCtx.sampleRate : 48000);
@@ -2864,9 +2895,9 @@
           globalStream = null;
       }
 
-      // ⚡ GUARANTEE SUBMISSION: Submit transcript and recording immediately when chat closes/ends ⚡
-      if (!window.isChatFeedbackSubmitted) {
-          submitChatData(showRating ? "Call Completed (Pending Rating)" : "Call Ended");
+      // ⚡ STORE IN DB ONLY ON CROSS MARK / DIRECT CLOSE (DO NOT STORE WHEN CLICKING LEAVE TO SHOW RATING) ⚡
+      if (!showRating && !window.isChatFeedbackSubmitted) {
+          submitChatData("Call Ended", "without_submit");
       }
 
       sessionStorage.removeItem('usd_chat_active');
@@ -2915,7 +2946,7 @@
 
       window.isChatFeedbackSubmitted = false;
       window.isSubmittingChatData = false;
-      await submitChatData(`${stars}/5 Stars`);
+      await submitChatData(`${stars}/5 Stars`, "submit_feedback");
 
       // ⚡ Fresh Start on Re-open: Once call is rated & concluded, clear old conversation so re-opening starts with fresh greeting ⚡
       chatHistory = [];
@@ -2927,17 +2958,20 @@
       sessionStorage.removeItem('usd_user_phone');
       sessionStorage.removeItem('usd_booking_slots');
       sessionStorage.removeItem('usd_chat_active');
+      sessionStorage.removeItem('usd_used_modes');
+      sessionStorage.removeItem('usd_conversation_type');
 
       setTimeout(() => { closeChat(false); }, 1500);
   }
 
   window.addEventListener('beforeunload', () => {
       if (!window.isChatFeedbackSubmitted && chatHistory && chatHistory.length > 0) {
-          submitChatData("Call Ended (Tab Closed)");
+          submitChatData("Call Ended (Tab Closed)", "without_submit");
       }
   });
 
   async function submitTextMessage() {
+      recordConversationMode('chat');
       const inputEl = document.getElementById('usd-text-input');
       const userText = cleanDisplayText(inputEl.value.trim());
       if (!userText) return;
@@ -3019,8 +3053,8 @@
       chatHistory.push({ role: "model", parts: [{ text: "Redirecting you now..." }] });
       saveHistory();
 
-      // ⚡ Submit conversation lead & transcript to Gmail on Link Click ⚡
-      submitChatData(`Clicked Action Link: ${linkInfo.label} (${tag})`);
+      // ⚡ Submit conversation lead & transcript to DB on Link Click ⚡
+      submitChatData(`Clicked Action Link: ${linkInfo.label} (${tag})`, "without_submit");
 
       window.open(linkInfo.url, '_blank');
       updateState('listening');
@@ -3069,7 +3103,7 @@
       return msgDiv;
   }
 
-  async function submitChatData(ratingLabel = "Call Ended") {
+  async function submitChatData(ratingLabel = "Call Ended", saveType = "without_submit", conversationType = "voice_agent") {
       if (window.isSubmittingChatData) return;
       window.isSubmittingChatData = true;
 
@@ -3141,11 +3175,20 @@
               console.log("[INFO] Submitting feedback (transcript only, no audio blob)");
           }
 
+          let convType = sessionStorage.getItem('usd_conversation_type') || conversationType || 'voice_agent';
+          if (!sessionStorage.getItem('usd_conversation_type')) {
+              const hasVoiceAudio = Boolean(window.recordedAudioBlob && window.recordedAudioBlob.size > 0);
+              convType = hasVoiceAudio ? "voice_agent" : "chat_agent";
+          }
+
           const payload = {
               rating: ratingLabel,
               transcript: transcriptText,
               audio_base64: audioBase64,
-              audio_filename: audioFilename
+              audio_filename: audioFilename,
+              save_type: saveType,
+              tag: saveType,
+              conversation_type: convType
           };
 
           // 1. Dispatch over active WebSocket if available (instant delivery, zero CORS)
@@ -3175,7 +3218,7 @@
               });
               if (resp.ok) {
                   const resJson = await resp.json();
-                  console.log("[INFO] Transcript and audio submitted successfully to marketing email (via local origin):", resJson);
+                  console.log("[INFO] Transcript and audio submitted successfully to DB:", resJson);
                   submittedSuccessfully = true;
               }
           } catch (localErr) {

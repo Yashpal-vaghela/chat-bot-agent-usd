@@ -93,67 +93,81 @@ from django.conf import settings
 # Overall, the outcome must radiate a premium yet natural smile. It should look like the person simply has perfect, healthy teeth. Anyone viewing the image should not detect it was digitally altered – it should look like a real, high-quality photograph of a person with a beautiful, naturally harmonious smile.
 # """
 # --------------------------------------------------Nikhil's prompt-----------------------------------------------------------------------------------    
-PROMPT = r"""TASK: Create a conservative, photorealistic cosmetic smile preview by editing the supplied photograph.
+PROMPT = r"""TASK: Create a conservative, photorealistic cosmetic smile preview by editing ONLY the visible tooth enamel inside the existing mouth opening.
 
-Use the input photograph as the absolute source of truth. Replace only the visible enamel surfaces of teeth that already exist inside the original mouth opening. The result must look like the same unedited photograph with naturally improved teeth, not like a newly generated portrait or a generic set of veneers.
+Use the input photograph as the absolute source of truth. The result must look like the EXACT same photograph with subtle, clean tooth improvements—not a newly generated face, not an altered expression, and not an enlarged smile.
 
-EDIT BOUNDARY - HIGHEST PRIORITY
-- Keep the exact original mouth opening, lip contours, lip corners, expression, gumline, tongue, oral cavity, face, skin, hair, clothing, background, framing, focus, grain, and lighting.
-- Teeth must remain behind the original lips and gums. Respect every original occlusion: anything hidden by a lip, gum, shadow, or another tooth stays hidden.
-- Preserve upper and lower teeth independently. If even a small, partial patch of lower-tooth enamel is visible in the input, the lower teeth are considered visible and must remain visible in the result. Only when absolutely no lower enamel is visible may the lower arch remain hidden. Never expose a new tooth or complete a hidden dental arch.
-- Keep the redesigned enamel within the original visible dental envelope. Do not widen the arch, enlarge the mouth, lower a lip, add gum, fill dark oral-cavity space, or extend white pixels into soft tissue.
+🚨 NEVER OPEN UP THE MOUTH - STRICT APERTURE LOCK (HIGHEST PRIORITY):
+- DO NOT OPEN THE MOUTH. DO NOT INCREASE THE GAP OR DISTANCE BETWEEN THE LIPS UNDER ANY CIRCUMSTANCE.
+- If the mouth in the input photograph has a small, narrow, or subtle opening, KEEP THAT EXACT SMALL OPENING.
+- DO NOT PULL, DROP, ROLL, OR SHIFT THE LOWER LIP DOWNWARD. The lower lip must remain 100% frozen in its exact position.
+- DO NOT DROP THE JAW OR ELONGATE THE MOUTH OPENING VERTICALLY OR HORIZONTALLY.
+- The vertical distance (opening height) between the upper lip and lower lip must remain pixel-identical to the input image.
+- TEETH MUST BE CONSERVATIVE AND SHORT: The lower cutting edges (incisal edges) of the upper teeth must NOT extend downward below the original tooth line.
+- If the original teeth only show a 2mm to 4mm strip of enamel height, the new teeth MUST ONLY BE 2mm to 4mm TALL.
+- NEVER open the mouth or drop the bottom lip to fit standard-sized teeth. Fit small, low-profile teeth strictly inside the existing opening.
+- The upper boundary of the lower lip is an immovable barrier: teeth must stop immediately above the lower lip and never push it downward.
 
-HEAD POSE AND DENTAL-PLANE MATCH - CRITICAL
-- First infer the exact 3D head pose and dental orientation from the original nose, lips, jaw, facial midline, and visible teeth. Match the original pitch, yaw, roll, occlusal plane, arch curvature, and camera elevation. Never default to a straight-on dental view.
-- All generated crowns must belong to the same 3D perspective as the head. Their long axes, facial planes, side-to-side height, foreshortening, and incisal-edge curve must rotate naturally with the face and mouth.
-- When the chin is raised or the camera views the mouth from below, render the upper teeth from that same slightly upward viewpoint: the crowns recede naturally upward and backward beneath the upper lip, with only anatomically appropriate subtle incisal thickness. Do not make the teeth face downward, hang vertically toward the camera, or look like a front-facing row pasted into an upward-tilted mouth.
-- When the chin is lowered or the camera is above the mouth, apply the corresponding opposite perspective. Always copy the viewpoint demonstrated by the original visible teeth rather than inventing a new one.
+🚨 ZERO COLOR GRADING - 100% NORMAL ORIGINAL COLORS:
+- DO NOT APPLY ANY COLOR GRADING, COLOR FILTER, WARM TINT, SEPIA, OR TONE ADJUSTMENT TO ANY PART OF THE IMAGE.
+- The overall color palette, color temperature, white balance, contrast, and exposure must remain 100% NORMAL and pixel-identical to the original input photograph.
+- Skin tone, lip color, mustache/beard, eyes, hair, clothing, and background must have ZERO color grading, ZERO saturation boost, and ZERO warmth added.
+- The photograph must look raw, completely natural, and unedited—NOT like a photo that had a warm filter or color grading preset applied.
 
-UPPER ATTACHMENT AND FULL-CROWN CONTINUITY - CRITICAL
-- Every upper crown must begin at its anatomically correct cervical origin at the original gumline, or continue naturally behind the upper lip where the gumline is occluded. It must remain physically attached to the upper dental arch.
-- Replace the intended visible crown as one continuous enamel surface from its cervical origin to its incisal edge. Complete the upper portion within the established tooth footprint; do not generate only the lower half of a crown.
-- Leave no dark horizontal band, black pocket, unfilled strip, original-tooth remnant, seam, or floating space between an upper tooth and its gum or upper-lip occlusion boundary.
-- Never solve attachment by painting enamel over visible pink gum or genuine oral-cavity space. The correct result is a full crown emerging naturally from the existing gumline or disappearing naturally behind the unchanged upper lip.
+🚨 ABSOLUTE ZERO LIP MODIFICATION - STRICT LOCK:
+- DO NOT MOVE, WIDEN, STRETCH, RAISE, LOWER, OR RESHAPE THE LIPS.
+- DO NOT CHANGE LIP COLOR, TONE, SHADE, TEXTURE, OR CONTOURS UNDER ANY CIRCUMSTANCE.
+- If gums are not showing in the input image, GUMS MUST REMAIN 100% HIDDEN. NEVER push the upper lip up to reveal gums or full-height crowns.
+- Both upper and lower lips act as an impenetrable, frozen frame. Only modify the small visible enamel surface exposed between the lips.
 
-LOWER-TEETH PRESERVATION - CRITICAL
-- Inspect the input specifically for small, short, partially occluded, shadowed, or irregular lower teeth. Any visible lower enamel, however small, is mandatory image content and must not disappear in the result.
-- Preserve the same lower-tooth locations, visible count, exposure height, silhouette, spacing, perspective, and occlusion behind the unchanged lower lip. Redesign only their already visible enamel surfaces at their original size.
-- Rerender every visible lower-enamel surface as part of the same dental treatment as the upper arch. Do not leave original yellow stains, discoloration, old enamel patches, doubled edges, or a source-tooth layer showing beneath the redesign.
-- Upper and lower teeth must share one coherent healthy ivory shade and photographic material response, with natural small variations but no isolated yellow tooth or yellow patch, especially at the lower-right or lower-left edges.
-- Never replace visible lower teeth with black oral cavity, tongue, shadow, or empty space. Never interpret a short lower tooth as a highlight or non-dental detail.
-- Upper teeth must not extend downward over the lower-tooth region, close the bite, reduce the original inter-arch opening, or hide lower teeth that were visible in the input.
-- Maintain the original spatial relationship between the upper and lower arches. Preserve the original vertical separation or overlap and keep both arches on the same head-pose perspective.
-- If lower-tooth visibility is uncertain, preserve the original visible lower enamel rather than deleting it. Do not invent portions that are fully hidden behind the lip.
+SMALL-TEETH SIZING & BOUNDARY LOCK - CRITICAL:
+- Match the exact visible height, width, and exposure of the original teeth.
+- If the original teeth are small, short, or partially hidden behind the lips, KEEP THEM SMALL AND SHORT.
+- If the upper lip drapes over the upper part of the teeth, KEEP IT DRAPED. Do NOT raise the lip or attempt to show full-height crowns. The upper teeth must remain naturally tucked beneath the upper lip.
+- Do NOT make teeth wider, longer, or bulkier. No oversized veneers.
+- Teeth must remain strictly behind the unchanged original lips.
 
-NATURAL DENTAL DESIGN
-- Create a healthy, gently aligned smile tailored to this person's existing dental arch, facial proportions, mouth opening, and camera angle. Correct distracting staining, chips, irregular edges, crowding, or spacing only within the visible dental envelope.
-- Render every visible tooth as a separate anatomical tooth, not a repeated template. Preserve subtle human asymmetry; the left and right sides should be harmonious but not mirrored clones.
-- Use credible anterior-tooth proportions: upper central incisors are subtly dominant, lateral incisors slightly narrower and usually a little shorter, canines have modest cusp definition and stronger corner curvature, and posterior teeth progressively recede with the arch perspective.
-- Follow one smooth, natural smile arc that relates to the lower-lip curve without touching or moving the lip. Side teeth should appear naturally foreshortened as they turn away from the camera, while every originally visible side-tooth surface remains continuous, clearly readable enamel.
-- Form believable contact areas and small incisal embrasures that gradually open toward the canines. Separate teeth through crown shape and a narrow, subtle, low-contrast value transition, never through black outlines, black wedges, or uniform gaps.
-- Give each crown realistic convex facial planes, restrained line angles, softly varied incisal edges, and anatomically plausible thickness. Avoid perfectly flat faces, identical widths, identical lengths, or ruler-straight edges.
+HEAD POSE AND DENTAL-PLANE MATCH - CRITICAL:
+- Infer the exact 3D head pose and dental orientation from the original nose, lips, jaw, and visible teeth. Match the original pitch, yaw, roll, and camera perspective.
+- All visible crowns must belong to the same 3D perspective as the head and rotate naturally with the face.
+- If the camera views the mouth from slightly below or above, respect that exact angle without forcing a straight-on dental view.
 
-SIDE-TOOTH INTEGRITY - CRITICAL
-- Preserve the complete visible enamel footprint of every original canine, premolar, and other side tooth. Do not erase, cut into, shorten, or cover any visible side-tooth enamel with oral-cavity darkness.
-- The dark buccal corridor may exist only outside the distal edge of the outermost visible tooth, exactly where it exists in the input. Do not enlarge it or move it inward across a tooth.
-- Never create a black triangle, wedge, notch, hole, stripe, stain, void, or near-black shadow on a visible tooth surface or at its gum transition.
-- Interproximal separation must be minimal and softly graded. Do not introduce any separator or contact shadow darker or wider than the corresponding separation in the input photograph.
-- If a side-tooth boundary is uncertain, preserve the continuous visible enamel supported by the input; never resolve uncertainty by painting a black gap.
+🚨 ONLY GENERATE TOP TEETH - NEVER INVENT BOTTOM TEETH (CRITICAL):
+- IF ONLY TOP TEETH ARE VISIBLE IN THE INPUT PHOTO, ONLY GENERATE AND ENHANCE THE TOP TEETH!
+- ABSOLUTELY NO NEED TO GENERATE BOTTOM TEETH.
+- DO NOT INVENT, FABRICATE, OR ADD A ROW OF BOTTOM TEETH.
+- DO NOT PULL DOWN, ROLL, STRETCH, OR MOVE THE BOTTOM LIP TO FIT OR REVEAL BOTTOM TEETH.
+- The space beneath the upper teeth must remain natural, dark oral cavity shadow, exactly as in the input photograph.
+- If bottom teeth are not clearly showing in the original photograph, ZERO bottom teeth must be drawn in the output.
 
-ENAMEL AND PHOTOGRAPHIC REALISM
-- Use natural healthy enamel in a warm-neutral ivory shade matched to the photograph's white balance. Teeth may be attractively bright, but never pure white, blue-white, gray, glowing, or uniformly one color.
-- Treat all visible enamel in both arches as one atomic replacement. The final image must contain a single clean dental layer, never newly generated crowns overlaid on top of visible original teeth.
-- Enamel and its contact shadows must contain no green, cyan, blue, purple, or other foreign-color speck, reflection, stain, edge pixel, or masking remnant. Replace any such artifact with continuous locally matched enamel color and texture.
-- Include subtle cervical warmth, gentle value variation between teeth, slight incisal translucency, realistic internal depth, restrained specular highlights, and very fine enamel texture. These details must remain subtle at the input image's resolution.
-- Match the original light direction, highlight size, shadows, sharpness, depth of field, noise, compression, and reflections. Keep side-tooth shading gentle and continuous, with no abrupt dark patches. Preserve oral-cavity darkness only in genuine non-tooth areas so the teeth feel embedded rather than pasted on.
-- Produce a seamless tooth-to-gum and tooth-to-shadow transition with no halos, cutout edges, double teeth, overlapping enamel layers, or leftover stained patches.
+NATURAL TEETH ENAMEL & COLOR:
+- Clean, natural, healthy tooth enamel in a neutral, realistic dental shade that seamlessly matches the natural ambient lighting of the original photograph.
+- NO artificial yellow/warm color grading on the teeth.
+- NO unnatural bluish, chalky, or glowing whiteness. Just clean, healthy, natural teeth as seen in normal real-world lighting.
+- Render each visible tooth with subtle, natural human asymmetry, gentle alignment, and anatomically credible proportions.
+- Central incisors must NOT be enlarged, elongated, or made dominant.
+- Side teeth must not be widened or crowded into the corners of the mouth.
 
-REJECT THESE ARTIFACTS
-- No piano-key smile, continuous white band, fused teeth, cloned crowns, oversized central incisors, rabbit teeth, long rectangular veneers, flat dental arch, excessive symmetry, black separator lines, black triangular side artifacts, missing side-tooth enamel, missing visible lower teeth, floating teeth, invented teeth or dental rows beyond those visible in the input, artificial gums, plastic opacity, or over-sharpened CGI texture.
+REJECT THESE ARTIFACTS:
+- REJECT inventing or adding bottom teeth when only top teeth were visible in the input.
+- REJECT moving, pulling down, or altering the bottom lip to show bottom teeth.
+- REJECT opening up the mouth, dropping the jaw, or moving the lower lip downward.
+- REJECT any color grading, warm tint, color cast, or filter across the face or image.
+- REJECT any movement or shape alteration of the lips.
+- REJECT enlarged, lengthened, or widened teeth. If teeth are small in the input, they must stay small.
+- REJECT raising the upper lip to expose gums or full crowns when gums were not visible in the input.
+- REJECT oversized veneers, fake symmetry, or cartoonish whiteness.
 
-Before rendering, internally inspect the original head pitch, camera elevation, dental plane, cervical attachment, upper-tooth exposure, lower-tooth exposure, tooth count, arch perspective, occlusions, light direction, color, and image sharpness. Before returning the image, verify that the new teeth share the head's 3D viewpoint, every upper crown is continuously attached with no unfilled band above it, and every lower tooth visible in the input is still visible at the same exposure. Prioritize anatomical plausibility and photographic integration over perfect whiteness or perfect symmetry.
+Before returning the image, verify:
+1. If only top teeth were visible in the input, did you ONLY generate top teeth without adding any bottom teeth? (YES required - do not add bottom teeth).
+2. Is the bottom lip 100% frozen in position, shape, and thickness, with zero movement to reveal bottom teeth? (YES required).
+3. Did the mouth open up or did the lower lip move downward? (NO - mouth opening height and lower lip position MUST be identical to the input).
+4. Are the new teeth short and confined strictly inside the original mouth opening without extending downward? (YES required).
+5. Is the color grading completely normal, matching the exact original input image with NO color filter or warm tint? (YES required).
+6. Are the lips 100% identical in position, width, height, shape, and color? (YES required).
+7. Did any gums appear that were hidden before? (NO allowed).
 
-Return only the final edited photograph, with no text, labels, explanation, border, or comparison layout.
+Return only the final edited photograph with no text, borders, or layout changes.
 """
 
 

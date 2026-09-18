@@ -162,7 +162,6 @@ class GeminiClient:
                             "model": GEMINI_LIVE_MODEL,
                             "generationConfig": {
                                 "responseModalities": ["AUDIO"],
-                                "maxOutputTokens": 150,
                                 "speechConfig": {
                                     "voiceConfig": {
                                         "prebuiltVoiceConfig": {
