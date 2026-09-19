@@ -147,13 +147,14 @@ class GeminiClient:
                         active_mem.append(f"- CURRENT CONFIRMED DOCTOR: {self.session.booking_slots.get('doctor_name')}")
                     if self.session.user_concern:
                         active_mem.append(f"- CURRENT CONFIRMED DENTAL CONCERN: {self.session.user_concern}")
+                    active_mem.append("- ZERO-CUTOFF MANDATE: You have 800 output tokens. 'Concise' NEVER means truncated! Finish every sentence started to its final punctuation mark. Never cut off mid-sentence (e.g. '. કૃપા કરીને તમારો—'). Greetings, profession follow-ups, phone number requests, review summaries, and detailed explanations must be spoken in full length.")
                     if self.session.booking_slots.get("is_submitted"):
                         active_mem.append("- APPOINTMENT ALREADY SUBMITTED: Do NOT re-ask for booking details.")
                     user_turn_count = len([h for h in (self.session.latest_client_history or []) if isinstance(h, dict) and h.get("role") in ["user", "model", "assistant"]]) // 2
                     if getattr(self.session, "profession_asked", False):
                         active_mem.append("- PROFESSION ALREADY ASKED/DISCUSSED: The user's profession was already asked or shared. You are STRICTLY FORBIDDEN from asking 'what is your profession?' or 'what do you do for work?' again.")
-                    elif user_turn_count < 3:
-                        active_mem.append("- EARLY CONVERSATION (FIRST 3 TURNS): Do NOT ask about profession in the first 3 turns! Focus on consulting, educating, and answering their questions.")
+                    elif user_turn_count < 2:
+                        active_mem.append("- EARLY CONVERSATION (TURNS 1 & 2): Do NOT ask about profession in turns 1 and 2! Focus on greeting, confirming name, and listening to their smile concern. Starting turn 3 / step 2.5, you MUST ask for their profession.")
                     if active_mem:
                         live_system_prompt += f"\n\n=========================================\nACTIVE PATIENT MEMORY (HIGH PRIORITY OVERRIDE):\n" + "\n".join(active_mem) + "\n========================================="
 
@@ -162,6 +163,7 @@ class GeminiClient:
                             "model": GEMINI_LIVE_MODEL,
                             "generationConfig": {
                                 "responseModalities": ["AUDIO"],
+                                "maxOutputTokens": 2048,
                                 "speechConfig": {
                                     "voiceConfig": {
                                         "prebuiltVoiceConfig": {
@@ -826,7 +828,9 @@ class GeminiClient:
                         raise e
             
             if not success:
-                raise last_error
+                if last_error is not None:
+                    raise last_error
+                raise RuntimeError("Gemini REST request failed after maximum retries")
             
             final_text = clean_assistant_text(display_str.strip() or "Okay.")
             final_tag, new_pending = detect_best_tag_with_fallback(

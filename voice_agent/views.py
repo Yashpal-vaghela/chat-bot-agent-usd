@@ -37,6 +37,7 @@ def api_tts(request):
         "contents": [{"parts": [{"text": text}]}],
         "generationConfig": {
             "responseModalities": ["AUDIO"],
+            "maxOutputTokens": 2048,
             "speechConfig": {
                 "voiceConfig": {
                     "prebuiltVoiceConfig": {

@@ -35,6 +35,8 @@ class Session:
         self.name_confirmed = False
         self.user_concern = ""
         self.consultation_agreed = False
+        self.consultation_offered = False
+        self.consultation_declined = False
         self.profession_asked = False
         self.asking_for_field = None
         self.slot_just_updated = False
