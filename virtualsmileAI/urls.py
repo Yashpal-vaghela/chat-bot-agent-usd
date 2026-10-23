@@ -8,7 +8,9 @@ app_name='virtualsmileAI'
 
 urlpatterns = [
     path('', views.smile, name='smile'),
-    # path('api/detect/', views.detect_api, name='teeth_detect_api'),
+    path('api/detect/', views.detect_api, name='teeth_detect_api'),
+    path('detect/', views.detect_api, name='teeth_detect_api_slash'),
+    path('detect', views.detect_api, name='teeth_detect_api_noslash'),
     path('api/capture/', views.capture_api, name='teeth_capture_api'),
     path('api/smile-design/', views.smile_design_api, name='teeth_smile_design_api'),
     path("api/smile-lead/", views.create_smile_lead_api, name="create_smile_lead_api"),

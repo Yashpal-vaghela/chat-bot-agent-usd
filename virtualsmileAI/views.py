@@ -3,7 +3,6 @@ import json
 import time
 import uuid
 import urllib.request
-
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
@@ -14,9 +13,9 @@ import threading
 from home.utils import send_mail
 from virtualsmileAI.forms import SmileDesignLeadForm
 from virtualsmileAI.gemini import add_logo_on_right
+from .models import SmileDesignLead
 from .yolo import decode_base64_image, run_inference_on_bgr, encode_image_to_base64_jpeg
 from .gemini import generate_smile_design, PromptTooLongError
-from .models import SmileDesignLead
 
 THRESHOLD = getattr(settings, "TEETH_DETECTION_THRESHOLD", 0.55)
 
@@ -54,15 +53,18 @@ def smile(request):
     )
 
 def send_smile_lead_email_async(context_dict):
-    # send_mail(
-    #     to_email=["marketing@advancedentalexport.com"],
-    #     subject=f"New Smile Ai Design Lead from {context_dict.get('Name', 'Unknown')}",
-    #     context_dict=context_dict
-    # )
-    pass
+    try:
+        send_mail(
+            to_email="tukadiyabhargav5@gmail.com",
+            subject=f"New Smile Ai Design Lead from {context_dict.get('Name', 'Unknown')}",
+            context_dict=context_dict
+        )
+        print(f"✅ Lead email sent successfully for {context_dict.get('Name')}")
+    except Exception as e:
+        print(f"❌ Lead email sending failed for {context_dict.get('Name')}: {e}")
 
 @require_POST
-@csrf_exempt
+@csrf_protect
 def create_smile_lead_api(request):
     try:
         payload = json.loads(request.body.decode("utf-8"))
@@ -80,16 +82,23 @@ def create_smile_lead_api(request):
         )
 
     # ✅ ensure before image exists
-    before_img = request.session.get("smile_before")
+    before_img = request.session.get("smile_before") or payload.get("before_image") or ""
+    after_img = request.session.get("smile_after") or payload.get("after_image") or ""
+
     if not before_img:
         return JsonResponse(
             {"ok": False, "error": "Please capture your photo first."},
             status=403
         )
 
+    raw_phone = (payload.get("phone") or "").strip()
+    digits = "".join(ch for ch in raw_phone if ch.isdigit())
+    formatted_phone = f"+{digits}" if digits else raw_phone
+
     data = {
         "name": (payload.get("name") or "").strip(),
-        "phone": (payload.get("phone") or "").strip(),
+        "phone": formatted_phone,
+        "pincode": (payload.get("pincode") or "").strip(),
         "city": (payload.get("city") or "").strip(),
         "email": (payload.get("email") or "").strip(),
     }
@@ -98,17 +107,63 @@ def create_smile_lead_api(request):
     if not form.is_valid():
         return JsonResponse({"ok": False, "errors": form.errors}, status=400)
 
+    # Helper function to save base64 image to media disk if needed
+    def save_image_file(img_data, prefix="before"):
+        if not img_data:
+            return ""
+        if img_data.startswith("data:image"):
+            try:
+                img_bgr = decode_base64_image(img_data)
+                out_dir = os.path.join(settings.MEDIA_ROOT, "smile_design", prefix)
+                os.makedirs(out_dir, exist_ok=True)
+                ts = int(time.time())
+                uid = uuid.uuid4().hex[:10]
+                filename = f"{prefix}_{ts}_{uid}.jpg"
+                filepath = os.path.join(out_dir, filename)
+                import cv2
+                cv2.imwrite(filepath, img_bgr)
+                return f"smile_design/{prefix}/{filename}"
+            except Exception as e:
+                print(f"Error saving {prefix} image:", e)
+                return ""
+        if img_data.startswith(settings.MEDIA_URL):
+            return img_data[len(settings.MEDIA_URL):].lstrip("/")
+        return img_data
+
+    before_saved = save_image_file(before_img, "before")
+    after_saved = save_image_file(after_img, "after")
+
+    # ✅ Fallback: If after image was not generated yet, auto-generate on backend immediately
+    if not after_saved and before_saved:
+        try:
+            ts = int(time.time())
+            uid = uuid.uuid4().hex[:10]
+            after_filename = f"after_{ts}_{uid}.jpg"
+            after_dir = os.path.join(settings.MEDIA_ROOT, "smile_design", "after")
+            os.makedirs(after_dir, exist_ok=True)
+            after_filepath = os.path.join(after_dir, after_filename)
+            before_filepath = os.path.join(settings.MEDIA_ROOT, before_saved)
+
+            generate_smile_design(before_filepath, after_filepath)
+            logo_path = os.path.join(settings.MEDIA_ROOT, "logo", "USD-GOLDEN.png")
+            if os.path.isfile(logo_path):
+                try:
+                    add_logo_on_right(after_filepath, logo_path)
+                except Exception:
+                    pass
+            after_saved = f"smile_design/after/{after_filename}"
+            print(f"✅ Auto-generated after image on backend: {after_saved}")
+        except Exception as e:
+            print(f"⚠️ Auto-generation of after image failed: {e}")
+
     obj = form.save(commit=False)
-    obj.before_image = (before_img or "")[:255]
-    after_img = request.session.get("smile_after", "")
-    obj.after_image = (after_img or "")[:255]
+    obj.before_image = before_saved
+    obj.after_image = after_saved
     obj.save()
 
     def get_absolute_image_url(path):
         if not path:
             return "N/A"
-        if path.startswith("data:image"):
-            return "Image Provided as Base64 Data URL"
         if path.startswith("http://") or path.startswith("https://"):
             return path
         return request.build_absolute_uri(settings.MEDIA_URL + path.lstrip("/"))
@@ -117,16 +172,17 @@ def create_smile_lead_api(request):
         "Name": obj.name,
         "Email": obj.email,
         "Phone": obj.phone,
+        "Pincode": obj.pincode or "",
         "City": obj.city,
         "Before Image": get_absolute_image_url(obj.before_image),
         "After Image": get_absolute_image_url(obj.after_image), 
     }
 
-    # threading.Thread(
-    #     target=send_smile_lead_email_async,
-    #     args=(context_dict,),
-    #     daemon=True
-    # ).start()
+    threading.Thread(
+        target=send_smile_lead_email_async,
+        args=(context_dict,),
+        daemon=True
+    ).start()
     # ✅ clear so it can’t be reused
     request.session.pop("smile_before", None)
     request.session.pop("smile_after", None)
@@ -138,113 +194,107 @@ def create_smile_lead_api(request):
 
 
 @require_POST
-@csrf_exempt
+@csrf_protect
 def trigger_whatsapp_api(request):
-    # WhatsApp webhook paused by user
-    return JsonResponse({"ok": True, "paused": True})
+    def to_absolute(url):
+        if not url:
+            return ""
+        if url.startswith("http://") or url.startswith("https://"):
+            return url
+        return request.build_absolute_uri(url)
 
-#         if not url:
-#             return ""
-#         if url.startswith("http://") or url.startswith("https://"):
-#             return url
-#         return request.build_absolute_uri(url)
+    try:
+        incoming = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return HttpResponseBadRequest("Invalid JSON")
 
-#     try:
-#         incoming = json.loads(request.body.decode("utf-8"))
-#     except Exception:
-#         return HttpResponseBadRequest("Invalid JSON")
+    lead_id = incoming.get("lead_id")
+    if not lead_id:
+        return JsonResponse({"ok": False, "error": "Missing lead_id"}, status=400)
 
-#     lead_id = incoming.get("lead_id")
-#     if not lead_id:
-#         return JsonResponse({"ok": False, "error": "Missing lead_id"}, status=400)
+    before_url = (incoming.get("before_url") or "").strip()
+    after_url = (incoming.get("after_url") or "").strip()
 
-#     before_url = (incoming.get("before_url") or "").strip()
-#     after_url = (incoming.get("after_url") or "").strip()
+    try:
+        lead = SmileDesignLead.objects.get(id=lead_id)
+    except SmileDesignLead.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "Lead not found"}, status=404)
 
-#     try:
-#         lead = SmileDesignLead.objects.get(id=lead_id)
-#     except SmileDesignLead.DoesNotExist:
-#         return JsonResponse({"ok": False, "error": "Lead not found"}, status=404)
+    # Save media paths (optional)
+    media_prefix = settings.MEDIA_URL.rstrip("/") + "/"
 
-#     # Save       paths (optional)
-#     media_prefix = settings.MEDIA_URL.rstrip("/") + "/"
+    def normalize_media_path(url):
+        if not url:
+            return ""
+        if url.startswith(media_prefix):
+            return url[len(media_prefix):]
+        abs_media = request.build_absolute_uri(settings.MEDIA_URL)
+        if url.startswith(abs_media):
+            return url[len(abs_media):]
+        return url
 
-#     def normalize_media_path(url):
-#         if not url:
-#             return ""
-#         if url.startswith(media_prefix):
-#             return url[len(media_prefix):]
-#         abs_media = request.build_absolute_uri(settings.MEDIA_URL)
-#         if url.startswith(abs_media):
-#             return url[len(abs_media):]
-#         return url
+    if before_url and (not lead.before_image or lead.before_image == "N/A"):
+        lead.before_image = normalize_media_path(before_url)
+    if after_url and (not lead.after_image or lead.after_image == "N/A"):
+        lead.after_image = normalize_media_path(after_url)
+    if before_url or after_url:
+        lead.save(update_fields=["before_image", "after_image"])
 
-#     if before_url and not lead.before_image:
-#         lead.before_image = normalize_media_path(before_url)
-#     if after_url and not lead.after_image:
-#         lead.after_image = normalize_media_path(after_url)
-#     if before_url or after_url:
-#         lead.save(update_fields=["before_image", "after_image"])
+    # Phone normalization - take country code and phone as passed in payload / lead
+    raw_phone = (incoming.get("phone") or lead.phone or "").strip()
+    digits = "".join(ch for ch in raw_phone if ch.isdigit())
+    if not digits or len(digits) < 7 or len(digits) > 15:
+        return JsonResponse({"ok": False, "error": f"Invalid phone: {raw_phone}"}, status=400)
 
-#     # Phone normalization
-#     raw_phone = (lead.phone or "").strip()
-#     cleaned = "".join(ch for ch in raw_phone if ch.isdigit() or ch == "+")
-#     if cleaned and not cleaned.startswith("+"):
-#         if cleaned.startswith("91"):
-#             cleaned = "+" + cleaned
-#         elif len(cleaned) == 10:
-#             cleaned = "+91" + cleaned
+    cleaned = f"+{digits}"
 
-#     if not cleaned or not cleaned.startswith("+") or len(cleaned) < 12:
-#         return JsonResponse({"ok": False, "error": f"Invalid phone: {cleaned}"}, status=400)
+    out_payload = {
+        "Name": lead.name,
+        "Email": lead.email,
+        "Contact": cleaned,
+        "Image": to_absolute(after_url),  # ✅ absolute
+        "DateTime": timezone.localtime(lead.created_at).strftime("%d%m%y %H:%M:%S"),
+    }
 
-#     out_payload = {
-#         "Name": lead.name,
-#         "Email": lead.email,
-#         "Contact": cleaned,
-#         "Image": to_absolute(after_url),  # ✅ absolute
-#         "DateTime": timezone.localtime(lead.created_at).strftime("%d%m%y %H:%M:%S"),
-#     }
+    # If image missing, fail early
+    if not out_payload["Image"].startswith("http"):
+        return JsonResponse({"ok": False, "error": f"Invalid Image URL: {out_payload['Image']}"}, status=400)
 
-#     # If image missing, fail early
-#     if not out_payload["Image"].startswith("http"):
-#         return JsonResponse({"ok": False, "error": f"Invalid Image URL: {out_payload['Image']}"}, status=400)
+    webhook_url = getattr(
+        settings,
+        "WHATSAPP_WEBHOOK_URL",
+        "https://bikapi.bikayi.app/chatbot/webhook/N8eHI9BWzqVPK7RnXu2xs5qIQt23?flow=aismilede5921",
+    )
 
-#     webhook_url = getattr(
-#         settings,
-#         "WHATSAPP_WEBHOOK_URL",
-#         "https://bikapi.bikayi.app/chatbot/webhook/N8eHI9BWzqVPK7RnXu2xs5qIQt23?flow=aismilede5921",
-#     )
+    try:
+        data = json.dumps(out_payload).encode("utf-8")
+        req = urllib.request.Request(
+            webhook_url,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            resp_body = resp.read().decode("utf-8", errors="ignore")
+            status = resp.status
 
-#     try:
-#         data = json.dumps(out_payload).encode("utf-8")
-#         req = urllib.request.Request(
-#             webhook_url,
-#             data=data,
-#             headers={"Content-Type": "application/json"},
-#             method="POST",
-#         )
-#         with urllib.request.urlopen(req, timeout=10) as resp:
-#             resp_body = resp.read().decode("utf-8", errors="ignore")
-#             status = resp.status
+        # Try to parse Bikayi response
+        try:
+            parsed = json.loads(resp_body)
+        except Exception:
+            parsed = {"raw": resp_body}
 
-#         # Try to parse Bikayi response
-#         try:
-#             parsed = json.loads(resp_body)
-#         except Exception:
-#             parsed = {"raw": resp_body}
+        ok = (200 <= status < 300)
+        # Respect common success flags if present
+        if isinstance(parsed, dict):
+            if "success" in parsed:
+                ok = ok and bool(parsed["success"])
+            if "ok" in parsed:
+                ok = ok and bool(parsed["ok"])
 
-#         ok = (200 <= status < 300)
-#         # Respect common success flags if present
-#         if isinstance(parsed, dict):
-#             if "success" in parsed:
-#                 ok = ok and bool(parsed["success"])
-#             if "ok" in parsed:
-#                 ok = ok and bool(parsed["ok"])
-
-#         return JsonResponse({"ok": ok, "status": status, "response": parsed})
-#     except Exception as e:
-#         return JsonResponse({"ok": False, "error": str(e)}, status=502)
+        return JsonResponse({"ok": ok, "status": status, "response": parsed})
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=502)
 
 @csrf_exempt
 def detect_api(request):
@@ -264,23 +314,19 @@ def detect_api(request):
     if not img_b64:
         return HttpResponseBadRequest("Missing image")
 
-    # # Smile detection commented out so every input is able to capture and change
-    # try:
-    #     img_bgr = decode_base64_image(img_b64)
-    #     out = run_inference_on_bgr(img_bgr)
-    #
-    #     conf = float(out["max_conf"])
-    #     visible = bool(out["visible"])
-    #
-    #     # You can keep returning annotated (even if you hide in UI)
-    #     annotated = encode_image_to_base64_jpeg(out["annotated_bgr"], quality=80)
-    #
-    #     return JsonResponse({"conf": conf, "visible": visible, "annotated": annotated})
-    # except Exception as e:
-    #     return JsonResponse({"error": str(e)}, status=400)
+    try:
+        img_bgr = decode_base64_image(img_b64)
+        out = run_inference_on_bgr(img_bgr)
 
-    # Bypass smile detection: accept any photo / input immediately
-    return JsonResponse({"conf": 1.0, "visible": True, "annotated": ""})
+        conf = float(out["max_conf"])
+        visible = bool(out["visible"])
+
+        # You can keep returning annotated (even if you hide in UI)
+        annotated = encode_image_to_base64_jpeg(out["annotated_bgr"], quality=80)
+
+        return JsonResponse({"conf": conf, "visible": visible, "annotated": annotated})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=400)
 
 @require_POST
 @csrf_exempt
@@ -346,7 +392,7 @@ def smile_design_api(request):
     import cv2
     cv2.imwrite(before_path, img_bgr)
 
-    # ✅ Run Gemini (full image, direct output without overlay)
+    # ✅ Run Gemini on 100% clean photo (no logo overlay = zero hallucinations)
     try:
         generate_smile_design(before_path, after_path)
     except PromptTooLongError as e:
