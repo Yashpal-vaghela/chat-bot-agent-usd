@@ -1,4 +1,4 @@
-no# Ignore virtual environment
+# Ignore virtual environment
 venv/
 
 # Ignore SQL files
@@ -14,3 +14,14 @@ __pycache__/
 
 # Ignore environment variables
 .env
+
+# Ignore user generated and test smile images
+media/smile_design/
+scratch/
+scratch_*.jpg
+scratch_*.png
+test_*.jpg
+test_*.png
+debug_*.jpg
+debug_*.png
+
