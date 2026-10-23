@@ -25,3 +25,9 @@ test_*.png
 debug_*.jpg
 debug_*.png
 
+# Ignore voice recordings
+media/voice_recordings/
+
+# Ignore collected static files
+staticfiles/
+

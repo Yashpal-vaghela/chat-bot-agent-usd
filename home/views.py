@@ -1551,12 +1551,14 @@ def save_lead_internal(request):
                 lead.last_name = data.get('last_name')
             if data.get('city'):
                 lead.city = data.get('city')
+            if hasattr(lead, 'pincode') and data.get('pincode'):
+                lead.pincode = data.get('pincode')
             if data.get('doctor_name'):
                 lead.doctor_name = data.get('doctor_name')
             if data.get('message'):
                 lead.message = data.get('message')
             lead.save()
-            print(f"[SUCCESS] save_lead_internal: Updated lead ID {lead.id} (Doctor: {lead.doctor_name}, is_cancel={getattr(lead, 'is_cancel', is_cancel)})")
+            print(f"[SUCCESS] save_lead_internal: Updated lead ID {lead.id} (Doctor: {lead.doctor_name}, Pincode: {getattr(lead, 'pincode', None)}, is_cancel={getattr(lead, 'is_cancel', is_cancel)})")
             return JsonResponse({'status': 'success', 'lead_id': lead.id, 'is_cancel': getattr(lead, 'is_cancel', is_cancel)})
         else:
             create_kwargs = {
@@ -1569,10 +1571,12 @@ def save_lead_internal(request):
                 'doctor_name': data.get('doctor_name', ''),
                 'agree_to_terms': True
             }
+            if hasattr(UserSubmission, 'pincode') and data.get('pincode'):
+                create_kwargs['pincode'] = data.get('pincode')
             if hasattr(UserSubmission, 'is_cancel'):
                 create_kwargs['is_cancel'] = is_cancel
             lead = UserSubmission.objects.create(**create_kwargs)
-            print(f"[SUCCESS] save_lead_internal: Successfully saved lead ID {lead.id} ({lead.first_name} {lead.last_name}, Phone: {lead.phone}, is_cancel={is_cancel}) to UserSubmission!")
+            print(f"[SUCCESS] save_lead_internal: Successfully saved lead ID {lead.id} ({lead.first_name} {lead.last_name}, Phone: {lead.phone}, Pincode: {getattr(lead, 'pincode', None)}, is_cancel={is_cancel}) to UserSubmission!")
             return JsonResponse({'status': 'success', 'lead_id': lead.id, 'is_cancel': is_cancel})
 
     except Exception as e:

@@ -360,7 +360,7 @@
     // Fallback: remote endpoint
     const endpoints = [
       "/virtual-smile-try-on/api/detect/",
-      "https://detect.ultimatesmiledesign.com/virtual-smile-try-on/api/detect/"
+      // "https://detect.ultimatesmiledesign.com/virtual-smile-try-on/api/detect/"
     ];
 
     let lastError = null;
@@ -721,7 +721,7 @@
       const reader = new FileReader();
       reader.onload = async (ev) => {
         const rawDataUrl = ev.target.result;
-        
+
         // We will draw it to canvas to normalize size
         const img = new Image();
         img.onload = async () => {
@@ -732,11 +732,11 @@
           const scale = Math.max(canvas.width / img.width, canvas.height / img.height);
           const x = (canvas.width / 2) - (img.width / 2) * scale;
           const y = (canvas.height / 2) - (img.height / 2) * scale;
-          
+
           ctx.fillStyle = "#000";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
-          
+
           const finalDataUrl = canvas.toDataURL("image/jpeg", 0.92);
 
           // Treat like a captured photo
@@ -751,16 +751,16 @@
             try {
               const data = await detectOnce(canvas);
               conf = typeof data.conf === "number" ? data.conf : (typeof data.confidence === "number" ? data.confidence : 0.85);
-              
+
               if (data && data.visible === false) {
-                 hideFreeze();
-                 setControlsForLive();
-                 setMessage("No face or smile detected in the uploaded photo. Please try another.", "error");
-                 if (!running && video && video.srcObject) {
-                   running = true;
-                   detectLoop();
-                 }
-                 return;
+                hideFreeze();
+                setControlsForLive();
+                setMessage("No face or smile detected in the uploaded photo. Please try another.", "error");
+                if (!running && video && video.srcObject) {
+                  running = true;
+                  detectLoop();
+                }
+                return;
               }
             } catch (detErr) {
               console.warn("Detect API notice during upload (proceeding with photo):", detErr);
@@ -787,15 +787,15 @@
             running = false;
             stopCamera();
             setControlsForCaptured();
-          } catch(err) {
-             console.error("Upload error:", err);
-             hideFreeze();
-             setControlsForLive();
-             setMessage("Error verifying photo. Please try again.", "error");
-             if (!running && video && video.srcObject) {
-               running = true;
-               detectLoop();
-             }
+          } catch (err) {
+            console.error("Upload error:", err);
+            hideFreeze();
+            setControlsForLive();
+            setMessage("Error verifying photo. Please try again.", "error");
+            if (!running && video && video.srcObject) {
+              running = true;
+              detectLoop();
+            }
           }
         };
         img.src = rawDataUrl;

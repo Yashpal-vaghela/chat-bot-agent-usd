@@ -4,6 +4,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib.auth import views as auth_views
 from . import pre
+from virtualsmileAI import views as vs_views
 # from exam import views as auth_view
 admin.site.site_header = 'Dashboard'                    # default: "Django Administration"
 admin.site.index_title = 'Admin Panel'                 # default: "Site administration"
@@ -13,6 +14,8 @@ urlpatterns = [
     path('', include('home.urls')),
     path('account/', include('account.urls')),
     path('virtual-smile-try-on/', include('virtualsmileAI.urls')),
+    path('detect', vs_views.detect_api, name='root_detect_api_noslash'),
+    path('detect/', vs_views.detect_api, name='root_detect_api'),
     path('get-location-info/', pre.get_location_info, name='get_location_info'),
     path('ckeditor/', include('ckeditor_uploader.urls')),
     # password reset
