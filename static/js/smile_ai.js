@@ -62,6 +62,8 @@
   let isCapturing = false;
   let currentFacingMode = "user"; // "user" or "environment"
   let hasMultipleCameras = false;
+  let videoDevices = [];
+  let currentDeviceIndex = 0;
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   // ✅ WhatsApp dedupe flags
@@ -72,11 +74,48 @@
   let lastDetectAt = 0;
   let lastVisible = false;
   const DETECT_FRESH_MS = 350; // adjust if needed
+  let detectFailCount = 0;        // consecutive detect API failure counter
+  const DETECT_FAIL_LIMIT = 3;    // after this many failures, enable button directly (offline mode)
+  let detectOfflineMode = false;  // true = detect API is down, run without it
+
+  function cleanupModalBackdrops() {
+    document.querySelectorAll(".modal-backdrop").forEach((el) => el.remove());
+    document.body.classList.remove("modal-open");
+    document.body.style.removeProperty("overflow");
+    document.body.style.removeProperty("padding-right");
+  }
+
+  function showPreviewLoader() {
+    cleanupModalBackdrops();
+    const previewLoader = document.getElementById("previewLoader");
+    const previewContent = document.getElementById("previewContent");
+    const previewError = document.getElementById("previewError");
+
+    if (previewLoader) {
+      previewLoader.classList.remove("d-none");
+      previewLoader.style.setProperty("display", "block", "important");
+    }
+    if (previewContent) {
+      previewContent.classList.add("d-none");
+      previewContent.style.setProperty("display", "none", "important");
+    }
+    if (previewError) {
+      previewError.classList.add("d-none");
+      previewError.style.setProperty("display", "none", "important");
+    }
+
+    const previewEl = document.getElementById("PreviewModal");
+    if (previewEl) {
+      const previewModal =
+        bootstrap.Modal.getInstance(previewEl) || new bootstrap.Modal(previewEl);
+      previewModal.show();
+    }
+  }
 
   function tryOpenPreviewInline() {
     if (!generationResult || generationResult.done !== true) return;
 
-    // stop loader
+    // stop loader in lead form if any
     if (leadFormMsg) {
       leadFormMsg.innerHTML = "";
       leadFormMsg.style.color = "";
@@ -87,11 +126,31 @@
     const previewError = document.getElementById("previewError");
     const previewErrorText = document.getElementById("previewErrorText");
 
+    const previewEl = document.getElementById("PreviewModal");
+    if (previewEl) {
+      const previewModal =
+        bootstrap.Modal.getInstance(previewEl) || new bootstrap.Modal(previewEl);
+      previewModal.show();
+    }
+
     if (generationResult.ok === true) {
       const pBefore = document.getElementById("previewBeforeImg");
       const pAfter = document.getElementById("previewAfterImg");
 
-      if (pBefore) pBefore.src = generationResult.beforeUrl || capturedDataUrl;
+      if (pBefore) {
+        pBefore.src = generationResult.beforeUrl || capturedDataUrl;
+        const syncAspect = () => {
+          const wrap = document.querySelector(".preview-modal-wrapper");
+          if (wrap && pBefore.naturalWidth && pBefore.naturalHeight) {
+            wrap.style.aspectRatio = `${pBefore.naturalWidth} / ${pBefore.naturalHeight}`;
+          }
+        };
+        if (pBefore.complete && pBefore.naturalWidth) {
+          syncAspect();
+        } else {
+          pBefore.onload = syncAspect;
+        }
+      }
       if (pAfter) pAfter.src = generationResult.afterUrl || generationResult.beforeUrl;
 
       // Reset slider to 50%
@@ -102,33 +161,42 @@
       if (line) line.style.left = "50%";
       if (imgAfterWrapper) imgAfterWrapper.style.clipPath = "inset(0px 0px 0px 50%)";
 
-      if (previewLoader) previewLoader.classList.add("d-none");
-      if (previewError) previewError.classList.add("d-none");
+      if (previewLoader) {
+        previewLoader.classList.add("d-none");
+        previewLoader.style.setProperty("display", "none", "important");
+      }
+      if (previewError) {
+        previewError.classList.add("d-none");
+        previewError.style.setProperty("display", "none", "important");
+      }
       if (previewContent) {
-        previewContent.style.display = "block";
         previewContent.classList.remove("d-none");
+        previewContent.style.setProperty("display", "block", "important");
       }
 
-      const contactModal = bootstrap.Modal.getInstance(
-        document.getElementById("contactModal")
-      );
-      contactModal?.hide();
-
-      const previewEl = document.getElementById("PreviewModal");
-      const previewModal =
-        bootstrap.Modal.getInstance(previewEl) || new bootstrap.Modal(previewEl);
-      previewModal.show();
+      const contactEl = document.getElementById("contactModal");
+      if (contactEl) {
+        const contactModal = bootstrap.Modal.getInstance(contactEl);
+        contactModal?.hide();
+      }
 
       previewOpened = true;
       leadForm?.reset();
 
-      // ✅ Only triggers once due to whatsappInFlight lock
+      // Only triggers once due to whatsappInFlight lock
       tryTriggerWhatsapp();
     } else {
-      if (previewLoader) previewLoader.classList.add("d-none");
-      if (previewContent) previewContent.style.display = "none";
+      if (previewLoader) {
+        previewLoader.classList.add("d-none");
+        previewLoader.style.setProperty("display", "none", "important");
+      }
+      if (previewContent) {
+        previewContent.classList.add("d-none");
+        previewContent.style.setProperty("display", "none", "important");
+      }
       if (previewError) {
         previewError.classList.remove("d-none");
+        previewError.style.setProperty("display", "block", "important");
         if (previewErrorText) previewErrorText.textContent = generationResult.error || "Smile generation failed.";
       }
       if (leadFormMsg) {
@@ -203,10 +271,9 @@
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter((d) => d.kind === "videoinput");
+        videoDevices = devices.filter((d) => d.kind === "videoinput");
         hasMultipleCameras = videoDevices.length > 1;
 
-        // Log the detected cameras to the console for easy verification
         console.log("--- Detected Camera Devices ---");
         console.table(videoDevices.map(c => ({ Name: c.label || 'Unnamed Camera', ID: c.deviceId })));
       }
@@ -225,22 +292,39 @@
     }
   }
 
-  async function startCamera() {
+  async function startCamera(preferredDeviceId = null) {
     stopCamera();
 
     const cameraDeniedOverlay = document.getElementById("cameraDeniedOverlay");
     if (cameraDeniedOverlay) cameraDeniedOverlay.classList.add("d-none");
 
-    const constraints = {
-      video: {
-        width: { ideal: 1184 },
-        height: { ideal: 864 },
-        facingMode: { ideal: currentFacingMode }
-      },
-      audio: false,
+    let videoConstraints = {
+      width: { ideal: 1184 },
+      height: { ideal: 864 }
     };
 
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    if (preferredDeviceId) {
+      videoConstraints.deviceId = { exact: preferredDeviceId };
+    } else if (currentFacingMode) {
+      videoConstraints.facingMode = { ideal: currentFacingMode };
+    }
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraints,
+        audio: false,
+      });
+    } catch (err) {
+      console.warn("getUserMedia with preferred constraints failed, trying fallback:", err);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: currentFacingMode },
+          audio: false,
+        });
+      } catch (err2) {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+    }
 
     video.srcObject = stream;
 
@@ -270,31 +354,34 @@
   }
 
   async function detectOnce(canvas) {
-    console.log("CALLING /detect (json base64)");
-
     const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
 
-    const resp = await fetch("https://ai.ultimatesmiledesign.com/detect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: dataUrl }),
-    });
+    // Primary: relative endpoint (always matches current host: local, tunnel, or live)
+    // Fallback: remote endpoint
+    const endpoints = [
+      "/virtual-smile-try-on/api/detect/",
+      "https://detect.ultimatesmiledesign.com/virtual-smile-try-on/api/detect/"
+    ];
 
-    const text = await resp.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { detail: text };
+    let lastError = null;
+    for (const url of endpoints) {
+      try {
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: dataUrl }),
+        });
+
+        if (resp.ok) {
+          const data = await resp.json();
+          return data;
+        }
+      } catch (e) {
+        lastError = e;
+      }
     }
 
-    // console.log("DETECT RESPONSE", data);
-
-    if (!resp.ok) {
-      throw new Error(data?.detail || `Detect failed: ${resp.status}`);
-    }
-
-    return data;
+    throw lastError || new Error("Detection endpoints unreachable");
   }
 
   async function saveCapture(frameDataUrl, conf) {
@@ -380,6 +467,7 @@
     confirmBtn.classList.remove("hidden");
     if (uploadBtn) uploadBtn.classList.add("hidden", "d-none");
     confirmBtn.disabled = !capturedDataUrl;
+    confirmBtn.innerHTML = 'Continue <img src="/static/light-arrow-left.svg" class="img-fluid" alt="arrow-left" />';
     captureBtn.disabled = true;
     if (guideLine) guideLine.classList.add("hidden", "d-none");
     updateSwitchCameraButtonVisibility();
@@ -452,7 +540,17 @@
 
         drawCurrentFrameToCanvas();
 
+        // If detect API is confirmed offline, skip remote call and enable button directly
+        if (detectOfflineMode) {
+          if (!isCapturing && running) updateCaptureButtonState(true);
+          await new Promise((r) => setTimeout(r, 500));
+          continue;
+        }
+
         const data = await detectOnce(canvas);
+
+        // Reset failure counter on success
+        detectFailCount = 0;
 
         if (!running) break;
 
@@ -481,7 +579,14 @@
           updateCaptureButtonState(fresh && visible && conf >= threshold);
         }
       } catch (e) {
-        console.error("detectLoop error:", e);
+        detectFailCount++;
+        console.warn(`detectLoop error (${detectFailCount}/${DETECT_FAIL_LIMIT}):`, e.message || e);
+        if (detectFailCount >= DETECT_FAIL_LIMIT && !detectOfflineMode) {
+          detectOfflineMode = true;
+          console.warn("[SmileAI] Detect API offline — enabling capture without remote validation.");
+          if (status) status.textContent = "Detection offline — Capture enabled directly.";
+          if (!isCapturing && running) updateCaptureButtonState(true);
+        }
       }
 
       await new Promise((r) => setTimeout(r, 200));
@@ -520,21 +625,33 @@
       setControlsForVerifying();
       setMessage("Please wait… your image is being verified.", "muted");
 
-      // ✅ Verify the frozen frame
-      const data = await detectOnce(canvas);
-
-      const conf =
-        typeof data.conf === "number"
-          ? data.conf
-          : typeof data.confidence === "number"
-            ? data.confidence
-            : 0;
-
-      const visible = !!data.visible;
+      let conf = 0.90;
+      let visible = true;
       const threshold = getThreshold();
 
+      // Only call detect if API is online
+      if (!detectOfflineMode) {
+        try {
+          const data = await detectOnce(canvas);
+          conf =
+            typeof data.conf === "number"
+              ? data.conf
+              : typeof data.confidence === "number"
+                ? data.confidence
+                : 0;
+          visible = !!data.visible;
+        } catch (detectErr) {
+          detectFailCount++;
+          if (detectFailCount >= DETECT_FAIL_LIMIT) detectOfflineMode = true;
+          console.warn("[SmileAI Capture] Detect failed — treating as offline pass.", detectErr);
+          // Offline: treat as valid pass
+          visible = true;
+          conf = 0.90;
+        }
+      }
+
       // ❌ FAIL → back to live → Capture Now (disabled until smile again)
-      if (!(visible && conf >= threshold)) {
+      if (!detectOfflineMode && !(visible && conf >= threshold)) {
         hideFreeze();
         setControlsForLive();
         setMessage("Verification failed ❌ Please smile and try again.", "error");
@@ -741,22 +858,26 @@
   switchCameraBtn?.addEventListener("click", async () => {
     if (isCapturing || !running) return;
 
-    currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
-
     setMessage("Switching camera...", "muted");
 
+    currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+
     try {
-      await startCamera();
+      if (videoDevices && videoDevices.length > 1) {
+        currentDeviceIndex = (currentDeviceIndex + 1) % videoDevices.length;
+        const nextDevice = videoDevices[currentDeviceIndex];
+        await startCamera(nextDevice.deviceId);
+      } else {
+        await startCamera();
+      }
       setMessage("Camera switched.", "muted");
       if (!running) detectLoop();
     } catch (e) {
-      console.error(e);
-      // Fallback: switch back
-      currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+      console.error("Camera switch error:", e);
       try {
         await startCamera();
       } catch (err) {
-        setMessage("Failed to switch camera: " + e.message, "error");
+        setMessage("Failed to switch camera: " + (e.message || "Unknown error"), "error");
         const cameraDeniedOverlay = document.getElementById("cameraDeniedOverlay");
         if (cameraDeniedOverlay) cameraDeniedOverlay.classList.remove("d-none");
       }
@@ -772,7 +893,41 @@
     }
 
     confirmBtn.disabled = true;
-    setMessage("Generating with Gemini…", "muted");
+    confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Designing Your Smile...';
+    setMessage("Designing your personalized smile preview…", "muted");
+
+    try {
+      const smileModalEl = document.getElementById("smileModal");
+      const openLoader = () => {
+        cleanupModalBackdrops();
+        showPreviewLoader();
+      };
+
+      if (smileModalEl && smileModalEl.classList.contains("show")) {
+        let transitioned = false;
+        const onHidden = () => {
+          if (transitioned) return;
+          transitioned = true;
+          smileModalEl.removeEventListener("hidden.bs.modal", onHidden);
+          setTimeout(() => {
+            openLoader();
+          }, 40);
+        };
+        smileModalEl.addEventListener("hidden.bs.modal", onHidden, { once: true });
+        const smileModal =
+          bootstrap.Modal.getInstance(smileModalEl) ||
+          bootstrap.Modal.getOrCreateInstance(smileModalEl);
+        smileModal.hide();
+        setTimeout(onHidden, 350);
+      } else {
+        openLoader();
+      }
+    } catch (e) {
+      console.warn("Modal transition note:", e);
+      cleanupModalBackdrops();
+      showPreviewLoader();
+    }
+
 
     if (!generationPromise) {
       generationPromise = (async () => {
@@ -785,9 +940,7 @@
               error: result?.error || "Smile generation failed",
               done: true,
             };
-            if (leadSubmitted) {
-              tryOpenPreviewInline();
-            }
+            tryOpenPreviewInline();
             return generationResult;
           }
 
@@ -803,36 +956,19 @@
             resultStatus.textContent = "Smile generated ✅";
           }
 
-          if (leadSubmitted) {
-            tryOpenPreviewInline();
-          }
+          tryOpenPreviewInline();
           return generationResult;
         } catch (e) {
           console.error("Gemini generation error:", e);
           generationResult = { ok: false, error: e.message || String(e), done: true };
-          if (leadSubmitted) {
-            tryOpenPreviewInline();
-          }
+          tryOpenPreviewInline();
           return generationResult;
         }
       })();
-    }
-
-    try {
-      // Hide camera capture modal
-      const smileModalEl = document.getElementById("smileModal");
-      const smileModal = bootstrap.Modal.getInstance(smileModalEl);
-      if (smileModal) smileModal.hide();
-
-      // Show Contact modal for user to enter name/contact
-      const contactEl = document.getElementById("contactModal");
-      if (contactEl) {
-        const contactModal =
-          bootstrap.Modal.getInstance(contactEl) || new bootstrap.Modal(contactEl);
-        contactModal.show();
-      }
-    } catch (e) {
-      console.warn("Contact modal show error:", e);
+    } else {
+      generationPromise.then(() => {
+        tryOpenPreviewInline();
+      });
     }
 
     confirmBtn.disabled = false;
@@ -856,43 +992,16 @@
   const csrftoken = getCookie("csrftoken");
 
   async function triggerWhatsappWebhook() {
-    const res = await fetch("/virtual-smile-try-on/api/whatsapp/", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": csrftoken,
-      },
-      body: JSON.stringify({
-        lead_id: leadId,
-        before_url: generationResult?.beforeUrl || "",
-        after_url: generationResult?.afterUrl || "",
-      }),
-    });
-    return await res.json();
+    // Disabled by user request: Do not send generated smiles or data to WhatsApp or external webhooks
+    return Promise.resolve({ ok: true, paused: true });
   }
 
   // ✅ UPDATED: prevents double call with whatsappInFlight
   async function tryTriggerWhatsapp() {
-    if (whatsappTriggered || whatsappInFlight) return;
-
-    if (!leadSubmitted || !leadId) return;
-    if (!generationResult || generationResult.done !== true) return;
-    if (!generationResult.ok) return;
-
-    whatsappInFlight = true;
-    try {
-      const data = await triggerWhatsappWebhook();
-      if (data && data.ok) {
-        whatsappTriggered = true;
-      } else {
-        console.warn("WhatsApp webhook failed:", data);
-      }
-    } catch (e) {
-      console.warn("WhatsApp webhook error:", e);
-    } finally {
-      whatsappInFlight = false;
-    }
+    // Disabled by user request: Do not send generated smiles or data to WhatsApp or external webhooks
+    return;
   }
+
 
   if (leadForm) {
     leadForm.addEventListener("submit", async (e) => {
@@ -980,7 +1089,9 @@
       whatsappTriggered = false;
       whatsappInFlight = false;
 
-      // ✅ reset detect snapshot
+      // ✅ reset detect state for new session
+      detectFailCount = 0;
+      detectOfflineMode = false;
       lastConf = 0;
       lastVisible = false;
       lastDetectAt = 0;
@@ -1026,5 +1137,33 @@
         tryOpenPreviewInline();
       }
     });
+
+    const previewModalEl = document.getElementById("PreviewModal");
+    if (previewModalEl) {
+      previewModalEl.addEventListener("hidden.bs.modal", () => {
+        previewOpened = false;
+        generationPromise = null;
+        generationResult = null;
+        capturedDataUrl = null;
+        setControlsForLive();
+        hideFreeze();
+        resetResult();
+
+        const previewLoader = document.getElementById("previewLoader");
+        const previewContent = document.getElementById("previewContent");
+        const previewError = document.getElementById("previewError");
+        if (previewLoader) {
+          previewLoader.classList.add("d-none");
+          previewLoader.style.display = "none";
+        }
+        if (previewContent) {
+          previewContent.classList.add("d-none");
+          previewContent.style.display = "none";
+        }
+        if (previewError) previewError.classList.add("d-none");
+
+        cleanupModalBackdrops();
+      });
+    }
   }
 })();

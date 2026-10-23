@@ -29,6 +29,11 @@
   pointer-events: none !important;
 }
 
+/* ========================================================================== */
+/* 🟢 [STEP 1 CSS] PEHLA STEP - CAMERA & SMILE CAPTURE MODAL (#smileModal)   */
+/* Video, Camera stream, Face overlay, Buttons (Capture/Recapture/Continue)  */
+/* ========================================================================== */
+
 /* Mirror only while capturing (inside Smile modal) */
 #smileModal #video {
   transform: scaleX(-1);
@@ -62,66 +67,591 @@
   text-align: center !important;
   display: block;
 }
+
 #smileModal .modal-dialog {
-  max-width: 1182px !important;
+  max-width: 800px !important;
   width: 95%;
-  max-height: 579px !important;
+  margin: 1.75rem auto;
 }
+
 #smileModal .modal-content {
-  /* border-radius: 12px;
-  border: 1px solid #fff; */
-  /* box-shadow: 0px 0px 46px 0px #ffffff40; */
-  background: #000000;
+  background: #000000 !important;
+  background-color: #000000 !important;
   box-shadow: 0px 0px 46px rgba(255, 255, 255, 0.25);
-  border-radius: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
   position: relative;
   overflow: hidden;
 }
 
-#smileModal .modal-content::before {
-  content: "";
-  position: absolute;
-  bottom: -20px;
-  left: -15px;
-  width: 200px;
-  height: 200px;
-  background: linear-gradient(
-    270deg,
-    #be9644 0.01%,
-    #aa803c 15.01%,
-    #f3dc87 43.01%,
-    #fbefac 59.01%,
-    #f3dc87 73.01%,
-    #aa803c 93.01%,
-    #c49d47 100.01%
-  );
-  filter: blur(160px);
-  z-index: 0;
-  border-radius: 50%;
-  pointer-events: none;
+/* ========================================================================== */
+/* 🎬 [STEP 1A - FIGMA DESIGN] INTRO & AUTOPLAY VIDEO (NON-STOP LOOP)         */
+/* ========================================================================== */
+.smile-intro-wrapper {
+  position: relative;
+  z-index: 1;
 }
 
-#smileModal .modal-content::after {
+.intro-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.ai-scan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  /* background: rgba(217, 165, 32, 0.08); */
+  border: 1px solid rgba(217, 165, 32, 0.4);
+  border-radius: 30px;
+  padding: 4px 12px;
+  color: #dfc86f;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  user-select: none;
+}
+
+.custom-intro-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+  opacity: 0.75;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  padding: 6px;
+}
+
+.custom-intro-close:hover {
+  opacity: 1;
+  transform: scale(1.08);
+}
+
+.intro-modal-title {
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 500;
+  font-family: "Barlow", sans-serif;
+  letter-spacing: 0.3px;
+  margin-top: 6px;
+  margin-bottom: 3px;
+}
+
+.intro-modal-subtitle {
+  background: linear-gradient(130deg,
+      #c3942f 0%,
+      #d89c27 25%,
+      #dfc86f 50%,
+      #d89c27 75%,
+      #c99c30 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  margin-bottom: 18px;
+}
+
+.guideline-video-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  border-radius: 16px;
+  overflow: hidden;
+  margin: 0 auto 16px auto;
+  background: #000000;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+/* Video ke charo taraf smooth gradient fade overlay (top me kam gradient) */
+.guideline-video-wrapper::after {
   content: "";
   position: absolute;
-  top: -100px;
-  right: -100px;
-  width: 275px;
-  height: 150px;
-  background: linear-gradient(
-    270deg,
-    #be9644 0.01%,
-    #aa803c 15.01%,
-    #f3dc87 43.01%,
-    #fbefac 59.01%,
-    #f3dc87 73.01%,
-    #aa803c 93.01%,
-    #c49d47 100.01%
-  );
-  filter: blur(200px);
-  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 1;
+  background:
+    linear-gradient(270deg, #000000 0%, rgba(0, 0, 0, 0) 20%),
+    linear-gradient(90deg, #000000 0%, rgba(0, 0, 0, 0) 20%),
+    linear-gradient(0deg, #000000 0%, rgba(0, 0, 0, 0) 20%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0) 10%);
+  box-shadow:
+    inset 0 -20px 25px -5px rgba(0, 0, 0, 0.85),
+    inset 20px 0 25px -5px rgba(0, 0, 0, 0.85),
+    inset -20px 0 25px -5px rgba(0, 0, 0, 0.85),
+    inset 0 4px 8px -3px rgba(0, 0, 0, 0.4);
+}
+
+.guideline-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Callout Overlays matching Figma */
+.guideline-annotations {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.guide-callout .callout-text {
+  font-size: 11px;
+  line-height: 1.25;
+  color: #ffffff;
+  font-weight: 400;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95), 0 0 8px rgba(0, 0, 0, 0.9);
+  display: inline-block;
+  letter-spacing: 0.2px;
+}
+
+.guide-callout-top {
+  position: absolute;
+  top: 7%;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.guide-callout-top .callout-line-down {
+  width: 0;
+  height: 22px;
+  border-left: 1.5px dashed rgba(255, 255, 255, 0.65);
+  margin: 3px auto 0 auto;
+}
+
+.guide-callout-left {
+  position: absolute;
+  top: 52%;
+  left: 5%;
+  display: flex;
+  align-items: center;
+  text-align: right;
+}
+
+.guide-callout-left .callout-line-right {
+  width: 26px;
+  height: 0;
+  border-top: 1.5px dashed rgba(255, 255, 255, 0.65);
+  margin-left: 6px;
+}
+
+.guide-callout-right {
+  position: absolute;
+  top: 45%;
+  right: 5%;
+  display: flex;
+  align-items: center;
+  text-align: left;
+}
+
+.guide-callout-right .callout-line-left {
+  width: 26px;
+  height: 0;
+  border-top: 1.5px dashed rgba(255, 255, 255, 0.65);
+  margin-right: 6px;
+}
+
+/* Next Button */
+.btn-intro-next {
+  border: 2px solid #4D4D4D33 !important;
+  background-color: #4D4D4D33;
+  color: #ffffff;
+  padding: 9px 38px;
+  width: 180px;
+  border-radius: 10px;
+  font-size: 16px !important;
+  font-weight: 500;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.25s ease;
+  box-shadow: none !important;
+}
+
+/* .btn-intro-next:hover,
+.btn-intro-next:focus {
+  background: linear-gradient(180deg, #333333 0%, #1c1c1c 100%);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+} */
+
+/* ========================================================================== */
+/* 📷 [STEP 1B - LIVE CAMERA VIEW] (FIGMA DESIGN - IMAGE 1 & 2)               */
+/* ========================================================================== */
+.smile-camera-wrapper {
+  position: relative;
+  z-index: 1;
+}
+
+.camera-viewport-container {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 11;
+  border-radius: 24px;
+  overflow: hidden;
+  background: #000000;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.camera-viewport-container #video,
+.camera-viewport-container #freezeImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Top-Left: Camera Switch Button */
+.btn-switch-camera {
+  position: absolute;
+  background-color: transparent !important;
+  top: 18px;
+  left: 18px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  color: #ffffff !important;
+  transition: all 0.2s ease;
+  border: none !important;
+  outline: none !important;
+  z-index: 30;
+}
+
+.btn-switch-camera:hover {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+  transform: scale(1.08);
+}
+
+.btn-switch-camera:active {
+  transform: rotate(180deg) scale(0.95);
+}
+
+/* Top-Right: Close Button */
+.custom-camera-close {
+  position: absolute;
+  background-color: transparent !important;
+  top: 18px;
+  right: 18px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  color: #ffffff !important;
+  transition: all 0.2s ease;
+  border: none !important;
+  outline: none !important;
+  z-index: 30;
+}
+
+.custom-camera-close:hover {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+  transform: scale(1.08);
+}
+
+/* Center: 4 Corner Guide Brackets (matching Image 1) */
+.face-frame-brackets {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 300px;
+  height: 425px;
+  max-width: 58%;
+  max-height: 60%;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.corner-bracket {
+  position: absolute;
+  width: 38px;
+  height: 38px;
+  border-color: white;
+  border-style: solid;
+  transition: opacity 1.2s ease, visibility 1.2s ease;
+}
+
+.corner-bracket.corner-tl {
+  top: 0;
+  left: 0;
+  border-width: 2.5px 0 0 2.5px;
+}
+
+.corner-bracket.corner-tr {
+  top: 0;
+  right: 0;
+  border-width: 2.5px 2.5px 0 0;
+}
+
+.corner-bracket.corner-bl {
+  bottom: 0;
+  left: 0;
+  border-width: 0 0 2.5px 2.5px;
+}
+
+.corner-bracket.corner-br {
+  bottom: 0;
+  right: 0;
+  border-width: 0 2.5px 2.5px 0;
+}
+
+/* Green Dashed Oval with 1.5s Smooth Transition:
+   1. Dark backdrop smoothly closes in from all 4 sides over 1.5s
+   2. Green dashed border line transitions in with butter-smooth timing
+*/
+.face-detected-oval {
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
   pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 1.5s cubic-bezier(0.25, 1, 0.5, 1), visibility 1.5s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Layer 1: Dark outside backdrop shadow */
+.face-detected-oval::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.68);
+  opacity: 0;
+  transform: scale(1.06);
+  pointer-events: none;
+  transition: opacity 1.5s cubic-bezier(0.16, 1, 0.3, 1), transform 1.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Layer 2: Green dashed border */
+.face-detected-oval::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2.5px dashed #28c76f;
+  opacity: 0;
+  transform: scale(0.96);
+  pointer-events: none;
+  transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.3s, transform 1.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s;
+}
+
+/* When smile is detected by AI model */
+.face-frame-brackets.ready .corner-bracket {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.face-frame-brackets.ready .face-detected-oval {
+  opacity: 1;
+  visibility: visible;
+}
+
+.face-frame-brackets.ready .face-detected-oval::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.face-frame-brackets.ready .face-detected-oval::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Hide guide brackets and text when photo is captured or set to d-none */
+.face-frame-brackets.d-none,
+.camera-viewport-container.is-captured .face-frame-brackets,
+.camera-guide-text.d-none,
+.camera-viewport-container.is-captured .camera-guide-text {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* Bottom Overlay: Guide Text & Button (matching Image 1) */
+.camera-bottom-overlay {
+  position: absolute;
+  bottom: 24px;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 10;
+  padding: 0 20px;
+}
+
+.camera-guide-text {
+  color: white;
+  font-size: 15px;
+  font-weight: 400;
+  text-align: center;
+  margin-bottom: 12px;
+  font-family: "Barlow", sans-serif;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+}
+
+/* Capture Now Button (matching screenshot) */
+.btn-capture-main {
+  background: #4D4D4D33 !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  color: #a5a5a5 !important;
+  padding: 10px 42px;
+  min-width: 175px;
+  border-radius: 10px;
+  font-size: 16px !important;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  transition: all 0.25s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+}
+
+.btn-capture-main:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #888888 !important;
+  box-shadow: none !important;
+}
+
+/* Enabled state when smile is detected */
+.btn-capture-main.btn-capture-ready {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  color: #ffffff !important;
+  background: #4D4D4D33 !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6) !important;
+  transform: translateY(-1px);
+}
+
+/* ReCapture & Continue buttons (matching Screenshot 2: dark glass style with white text) */
+.captured-actions-group {
+  margin-top: 4px;
+}
+
+.btn-recapture-main,
+.btn-confirm-main {
+  background: #4D4D4D33 !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  padding: 10px 24px;
+  min-width: 140px;
+  border-radius: 10px;
+  font-family: "Barlow", sans-serif;
+  font-size: 16px !important;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.25s ease;
+  box-shadow: none !important;
+  cursor: pointer;
+}
+
+/* .btn-recapture-main:hover,
+.btn-confirm-main:hover {
+  background: rgba(55, 55, 62, 0.96) !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+} */
+
+.btn-recapture-main:active,
+.btn-confirm-main:active {
+  transform: translateY(0);
+}
+
+.btn-confirm-main:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+}
+
+/* 🖼️ IMAGE 2: Camera Access Permission Screen (Solid black, centered icon & prompt only) */
+.camera-viewport-container.permission-pending .face-frame-brackets,
+.camera-viewport-container.permission-pending .camera-bottom-overlay,
+.camera-viewport-container.permission-pending #switchCameraBtn,
+.camera-viewport-container:has(#cameraDeniedOverlay:not(.d-none)) .face-frame-brackets,
+.camera-viewport-container:has(#cameraDeniedOverlay:not(.d-none)) .camera-bottom-overlay,
+.camera-viewport-container:has(#cameraDeniedOverlay:not(.d-none)) #switchCameraBtn {
+  display: none !important;
+}
+
+.camera-denied-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #000000 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  border-radius: inherit;
+}
+
+.camera-denied-overlay.d-none {
+  display: none !important;
+}
+
+.permission-overlay-content {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-width: 300px;
+  /* border: 1px solid red; */
+}
+
+.permission-camera-icon {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+}
+
+.permission-prompt-title {
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.45;
+  margin: 0;
+  font-family: "Barlow", sans-serif;
+  letter-spacing: 0.3px;
+}
+
+/* Disable gradient background glow to keep background solid black */
+#smileModal .modal-content::before,
+#smileModal .modal-content::after {
+  display: none !important;
+  content: none !important;
 }
 
 #smileModal .modal-content,
@@ -168,7 +698,7 @@
 }
 
 #smileModal .modal-body {
-  padding: 0rem 1rem;
+  padding: 0 !important;
   color: #fff;
   position: relative;
   z-index: 1;
@@ -186,30 +716,24 @@
   top: 0;
   bottom: 0;
   width: 2px;
-  background: linear-gradient(
-    180deg,
-    #be9644 0.01%,
-    #aa803c 15.01%,
-    #f3dc87 43.01%,
-    #fbefac 59.01%,
-    #f3dc87 73.01%,
-    #aa803c 93.01%,
-    #c49d47 100.01%
-  );
-  -webkit-mask-image: repeating-linear-gradient(
-    to bottom,
-    #000 0,
-    #000 6px,
-    transparent 6px,
-    transparent 12px
-  );
-  mask-image: repeating-linear-gradient(
-    to bottom,
-    #000 0,
-    #000 6px,
-    transparent 6px,
-    transparent 12px
-  );
+  background: linear-gradient(180deg,
+      #be9644 0.01%,
+      #aa803c 15.01%,
+      #f3dc87 43.01%,
+      #fbefac 59.01%,
+      #f3dc87 73.01%,
+      #aa803c 93.01%,
+      #c49d47 100.01%);
+  -webkit-mask-image: repeating-linear-gradient(to bottom,
+      #000 0,
+      #000 6px,
+      transparent 6px,
+      transparent 12px);
+  mask-image: repeating-linear-gradient(to bottom,
+      #000 0,
+      #000 6px,
+      transparent 6px,
+      transparent 12px);
 }
 
 #smileModal .modal-body .modal-title {
@@ -239,17 +763,14 @@
 #smileModal .modal-step-box {
   background:
     linear-gradient(#1b1b1b, #1b1b1b) padding-box,
-    linear-gradient(
-        270deg,
-        #be9644 0.01%,
-        #aa803c 15.01%,
-        #f3dc87 43.01%,
-        #fbefac 59.01%,
-        #f3dc87 73.01%,
-        #aa803c 93.01%,
-        #c49d47 100.01%
-      )
-      border-box;
+    linear-gradient(270deg,
+      #be9644 0.01%,
+      #aa803c 15.01%,
+      #f3dc87 43.01%,
+      #fbefac 59.01%,
+      #f3dc87 73.01%,
+      #aa803c 93.01%,
+      #c49d47 100.01%) border-box;
   border: 1.5px solid transparent;
   border-radius: 12px;
   padding: 15px 20px;
@@ -338,17 +859,14 @@
   box-shadow: 0px 0px 46px 0px #ffffff40;
   background:
     linear-gradient(#000, #000) padding-box,
-    linear-gradient(
-        270deg,
-        #be9644 0.01%,
-        #aa803c 15.01%,
-        #f3dc87 43.01%,
-        #fbefac 59.01%,
-        #f3dc87 73.01%,
-        #aa803c 93.01%,
-        #c49d47 100.01%
-      )
-      border-box;
+    linear-gradient(270deg,
+      #be9644 0.01%,
+      #aa803c 15.01%,
+      #f3dc87 43.01%,
+      #fbefac 59.01%,
+      #f3dc87 73.01%,
+      #aa803c 93.01%,
+      #c49d47 100.01%) border-box;
 }
 
 .video-capture-wrapper #video,
@@ -362,6 +880,12 @@
   object-fit: cover;
 }
 
+/* 🟢 [STEP 1 CSS END] ====================================================== */
+
+/* ========================================================================== */
+/* 🟡 [STEP 2 CSS] DUSRA STEP - CONTACT FORM MODAL (#contactModal)           */
+/* Lead Form, Input fields, Country code dropdown, Pincode auto-fetch, Submit*/
+/* ========================================================================== */
 #contactModal .modal-dialog .modal-content {
   padding: 30px 40px 55px;
   background-color: #000;
@@ -374,11 +898,9 @@
   padding: 75px 20px 30px;
   background:
     linear-gradient(0deg, #000000, #000000),
-    radial-gradient(
-      50% 50% at 50% 50%,
+    radial-gradient(50% 50% at 50% 50%,
       rgba(65, 65, 65, 0.2) 0%,
-      rgba(0, 0, 0, 0.2) 100%
-    );
+      rgba(0, 0, 0, 0.2) 100%);
   /* background-color: #000; */
   /* background-image: url(/static/Thankyou-bg3.webp); */
   background-size: 100% 100%;
@@ -405,7 +927,7 @@
 }
 
 #contactModal .contact-wrapper .usd-logo-img {
-  background-image: linear-gradient(#000 40%, transparent 31%);
+  background-image: linear-gradient(#000 100%, transparent 31%);
   padding: 0 20px;
   position: absolute;
   text-align: start;
@@ -430,46 +952,64 @@
     border-image-source: linear-gradient(100.47deg, #C3942F 28.12%, #D89C27 41.31%, #E7DC96 53.42%, #DFC86F 65.82%, #D89C27 75.96%, #C99C30 84.47%);
 } */
 .contact-form .form-control {
-  background:
-    linear-gradient(#000, #000) padding-box,
-    linear-gradient(
-        130deg,
-        #c3942f 0%,
-        #d89c27 18%,
-        #dfc86f 37%,
-        #e7dc96 50%,
-        #dfc86f 64%,
-        #d89c27 82%,
-        #c99c30 100%
-      )
-      border-box;
-  border: 1.5px solid transparent;
+  background: #000000;
+  border: 1px solid #9E9E9E !important;
   border-radius: 25px;
   padding: 12px 16px;
   color: #fff;
   margin-bottom: 25px;
-  /* background-color: #000;
-    padding: 6px 12px;
-    border-radius: 25px;
-    margin-bottom: 20px;
-    color:#fff; */
-  /* border: 1px solid;
-    border-image-source: linear-gradient(100.47deg, #C3942F 28.12%, #D89C27 41.31%, #E7DC96 53.42%, #DFC86F 65.82%, #D89C27 75.96%, #C99C30 84.47%);
-    border: 1.5px solid;
-    border-image-slice: 1;
-    border-image-width: 1.5px;
-    border-radius: 20px;
-    border-image-source: linear-gradient(130deg, #C3942F 0%, #D89C27 18%, #DFC86F 37%, #E7DC96 50%, #DFC86F 64%, #D89C27 82%, #C99C30 100%) !important; */
 }
 
-.contact-form .btn {
-  padding: 7px 30px;
+.contact-form .form-control:focus {
+  background: #000000;
+  border-color: #9E9E9E !important;
+  color: #fff;
+  box-shadow: 0 0 0 0.15rem rgba(158, 158, 158, 0.25);
 }
+
+#contactModal #leadSubmitBtn,
+.contact-form .btn {
+  background: #4D4D4D33 !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  padding: 10px 42px;
+  min-width: 140px;
+  border-radius: 10px;
+  font-family: "Barlow", sans-serif;
+  font-size: 16px !important;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s ease;
+  box-shadow: none !important;
+  cursor: pointer;
+}
+
+#contactModal #leadSubmitBtn:hover,
+.contact-form .btn:hover {
+
+  border-color: white !important;
+}
+
+#contactModal #leadSubmitBtn:focus,
+.contact-form .btn:focus {
+  box-shadow: none !important;
+  color: #ffffff !important;
+}
+
+#contactModal #leadSubmitBtn:disabled,
+.contact-form .btn:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
 
 #contactModal .btn-close {
-  background: transparent
-    url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3e%3cpath d='M.293.293a1 1 0 011.414 0L8 6.586 14.293.293a1 1 0 111.414 1.414L9.414 8l6.293 6.293a1 1 0 01-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 01-1.414-1.414L6.586 8 .293 1.707a1 1 0 010-1.414z'/%3e%3c/svg%3e")
-    center / 1em auto no-repeat;
+  background: transparent url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3e%3cpath d='M.293.293a1 1 0 011.414 0L8 6.586 14.293.293a1 1 0 111.414 1.414L9.414 8l6.293 6.293a1 1 0 01-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 01-1.414-1.414L6.586 8 .293 1.707a1 1 0 010-1.414z'/%3e%3c/svg%3e") center / 1em auto no-repeat;
   display: flex;
   margin: auto 0px 30px auto;
 }
@@ -479,6 +1019,12 @@
   box-shadow: 0 0 0 0.25rem rgba(216, 156, 39, 0.25);
 }
 
+/* 🟡 [STEP 2 CSS END] ====================================================== */
+
+/* ========================================================================== */
+/* 🔵 [STEP 3 CSS] TEESRA STEP - PREVIEW BEFORE/AFTER MODAL (#PreviewModal)   */
+/* Before/After Image Slider, Split Handle, Download & Appointment Buttons   */
+/* ========================================================================== */
 #PreviewModal .modal-content {
   background-color: #000;
   box-shadow: 0px 0px 46px 0px #ffffff40;
@@ -489,16 +1035,14 @@
 
 .preview-modal-wrapper {
   position: relative;
-  display: flex;
+  display: block;
   width: 100%;
-  max-width: 420px;
-  /* width: 70%; */
-  /* height: 100%; */
-  margin: auto;
+  max-width: 440px;
+  margin: 0 auto;
   border-radius: 10px;
   border: 1px solid #ffffff;
-  aspect-ratio: 11/8;
-  object-fit: cover;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .preview_img_wrapper {
@@ -506,13 +1050,37 @@
   inset: 0;
   width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
-.preview_img_wrapper img {
+/* First image dictates natural aspect ratio and height of wrapper */
+.preview_img_wrapper:first-child {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: auto;
+}
+
+.preview_img_wrapper:first-child img {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
+}
+
+/* Second (After) image sits right on top with slider clip-path */
+.preview_img_wrapper:nth-child(2) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  clip-path: inset(0px 0px 0px 50%);
+}
+
+.preview_img_wrapper:nth-child(2) img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* cover behaves like your camera, contain if you prefer */
   display: block;
 }
 
@@ -530,9 +1098,7 @@
 }
 
 #PreviewModal .btn-close {
-  background: transparent
-    url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3e%3cpath d='M.293.293a1 1 0 011.414 0L8 6.586 14.293.293a1 1 0 111.414 1.414L9.414 8l6.293 6.293a1 1 0 01-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 01-1.414-1.414L6.586 8 .293 1.707a1 1 0 010-1.414z'/%3e%3c/svg%3e")
-    center / 1em auto no-repeat;
+  background: transparent url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3e%3cpath d='M.293.293a1 1 0 011.414 0L8 6.586 14.293.293a1 1 0 111.414 1.414L9.414 8l6.293 6.293a1 1 0 01-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 01-1.414-1.414L6.586 8 .293 1.707a1 1 0 010-1.414z'/%3e%3c/svg%3e") center / 1em auto no-repeat;
   display: flex;
   margin: auto 0px 0px auto;
 }
@@ -541,33 +1107,69 @@
   padding: 0.5rem 1rem;
 }
 
-.preview_img_wrapper {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  /* height: 300px; */
-  overflow: hidden;
-  border-radius: 10px;
-}
-
-.preview_img_wrapper:nth-child(2) {
-  clip-path: inset(0px 0px 0px 50%);
-}
-
-.preview_img_wrapper img {
-  width: 100%;
-  height: 100%;
-  /* object-fit: none; */
-  object-fit: contain;
-}
-
 #preview-line {
   position: absolute;
+  top: 0;
+  bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 0.2rem;
+  width: 2px;
   height: 100%;
-  background-color: #f5c842;
+  background-color: #ffffff;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.slider-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background-color: #ffffff;
+  box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.slider-button svg {
+  display: block;
+}
+
+.preview-modal-wrapper .before-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: transparent;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  cursor: ew-resize;
+  opacity: 0;
+}
+
+.preview-modal-wrapper .before-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  cursor: ew-resize;
+}
+
+.preview-modal-wrapper .before-input::-moz-range-thumb {
+  width: 2.25rem;
+  height: 2.25rem;
+  cursor: ew-resize;
 }
 
 .preview-label {
@@ -621,8 +1223,11 @@
   margin: 0px 5px;
 }
 
-/* endcommon css */
-/* banner css */
+/* 🔵 [STEP 3 CSS END] ====================================================== */
+
+/* ========================================================================== */
+/* 🏠 [LANDING PAGE CSS] HERO BANNER SECTION                                 */
+/* ========================================================================== */
 .banner-highlight {
   /* background: var(--color-orange-4910, #D9A5201A); */
   background: #d9a5201a;
@@ -670,7 +1275,9 @@
   width: 75%;
 }
 
-/* tips section */
+/* ========================================================================== */
+/* 💡 [LANDING PAGE CSS] TIPS SECTION (4 Steps Cards 01-04)                   */
+/* ========================================================================== */
 .tips-section {
   background: linear-gradient(270deg, #0d0d0d 0%, #191919 50%, #000000 100%);
 }
@@ -740,7 +1347,9 @@
   letter-spacing: 0.3px;
 }
 
-/* ai smile section */
+/* ========================================================================== */
+/* 🚀 [LANDING PAGE CSS] AI SMILE CTA SECTION (Ready to See Your New Smile?)  */
+/* ========================================================================== */
 .ai-smile-section {
   padding-top: 20px;
   padding-bottom: 40px;
@@ -765,17 +1374,13 @@
   inset: 0;
   padding: 2px;
   border-radius: inherit;
-  background: linear-gradient(
-    100deg,
-    #c3942f,
-    #d89c27,
-    #e7dc96,
-    #dfc86f,
-    #d89c27
-  );
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+  background: linear-gradient(100deg,
+      #c3942f,
+      #d89c27,
+      #e7dc96,
+      #dfc86f,
+      #d89c27);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
@@ -795,6 +1400,9 @@
   margin-bottom: 30px;
 }
 
+/* ========================================================================== */
+/* 🟢 [STEP 1 CSS] VIDEO & CAMERA OVERLAY (PEHLA STEP - Camera Preview Box)   */
+/* ========================================================================== */
 .video-capture-wrapper .video-inner {
   position: relative;
   width: 100%;
@@ -841,17 +1449,14 @@
   bottom: -2px;
   border: 4px solid transparent;
   border-radius: 50%;
-  background: linear-gradient(
-      130deg,
+  background: linear-gradient(130deg,
       #c3942f 0%,
       #d89c27 18%,
       #dfc86f 37%,
       #e7dc96 50%,
       #dfc86f 64%,
       #d89c27 82%,
-      #c99c30 100%
-    )
-    border-box;
+      #c99c30 100%) border-box;
   -webkit-mask:
     linear-gradient(#fff 0 0) padding-box,
     linear-gradient(#fff 0 0);
@@ -899,7 +1504,7 @@
 
 @media (min-width: 991px) {
   #smileModal .modal-dialog {
-    max-width: 1024px;
+    max-width: 630px;
   }
 
   #contactModal .modal-dialog {
@@ -924,8 +1529,10 @@
   }
 
   .video-capture-wrapper .video-inner {
-    aspect-ratio: 3/4; /* makes the video wrapper taller on mobile */
-    max-height: 60vh; /* ensures it doesn't push everything else off screen on small devices */
+    aspect-ratio: 3/4;
+    /* makes the video wrapper taller on mobile */
+    max-height: 60vh;
+    /* ensures it doesn't push everything else off screen on small devices */
   }
 
   .preview-modal-wrapper {
@@ -1116,6 +1723,7 @@
   .preview_img_wrapper {
     object-fit: cover;
   }
+
   #contactModal .contact-wrapper .usd-logo-img {
     background-image: none !important;
     background-color: #000 !important;
@@ -1233,7 +1841,7 @@
     padding: 6px 15px;
     height: 42px;
     margin-bottom: 18px;
-    border: 1.2px solid transparent;
+    border: 1px solid #9E9E9E !important;
   }
 
   #PreviewModal .modal-content {
@@ -1325,6 +1933,7 @@
     top: 0%;
     height: 95%;
   }
+
   #smileModal .smile-close-btn {
     top: 20px;
     right: 20px;
@@ -1350,8 +1959,10 @@
   }
 
   /* .video-capture-wrapper .video-inner {
-    max-height: 70vh;
+    aspect-ratio: 3 / 4;
+    max-height: 45vh;
   } */
+
   /* ai section */
   .ai-smile-wrapper {
     padding: 25px 20px 35px;
@@ -1367,196 +1978,1081 @@
     margin-bottom: 20px;
   }
 
-  /* modal */
-  #contactModal .contact-wrapper {
-    padding: 45px 15px 22px;
+  /* ======================================================================== */
+  /* 📱 [MOBILE FULLSCREEN POPUPS] FOR MAX-WIDTH: 576px                       */
+  /* ======================================================================== */
+  #smileModal,
+  #contactModal,
+  #PreviewModal {
+    padding: 0 !important;
+  }
+
+  body.modal-open .site-header,
+  body.modal-open header,
+  body.modal-open .main-bar,
+  body.modal-open .is-fixed {
+    display: none !important;
+  }
+
+  .modal-backdrop.show {
+    opacity: 1 !important;
+    background-color: #000000 !important;
+  }
+
+  #smileModal .modal-dialog,
+  #contactModal .modal-dialog,
+  #PreviewModal .modal-dialog {
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    height: 100% !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    display: flex !important;
+    align-items: stretch !important;
+    transform: none !important;
+  }
+
+  #smileModal .modal-content,
+  #contactModal .modal-content,
+  #PreviewModal .modal-content {
+    width: 100% !important;
+    height: 100% !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background-color: #000000 !important;
+    margin: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  #smileModal .modal-body,
+  #contactModal .modal-body,
+  #PreviewModal .modal-body {
+    width: 100% !important;
+    height: 100% !important;
+    flex: 1 1 auto !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* ------------------------------------------------------------------------ */
+  /* 1️⃣ POPUP 1A: INTRO GUIDE VIEW (#smileIntroView)                          */
+  /* ------------------------------------------------------------------------ */
+  #smileIntroView:not(.d-none) {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center;
+    height: 100% !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px)) 16px !important;
+    box-sizing: border-box !important;
+    background: #000000 !important;
+    overflow: hidden !important;
+  }
+
+  #smileIntroView.d-none {
+    display: none !important;
+  }
+
+  #smileIntroView .intro-header-bar {
+    width: 100% !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    margin-bottom: 6px !important;
+    flex: 0 0 auto !important;
+  }
+
+  #smileIntroView .intro-modal-title {
+    font-size: 20px !important;
+    font-weight: 500 !important;
+    margin-top: 2px !important;
+    margin-bottom: 2px !important;
+    text-align: center !important;
+    flex: 0 0 auto !important;
+  }
+
+  #smileIntroView .intro-modal-subtitle {
+    font-size: 14px !important;
+    margin-bottom: 6px !important;
+    text-align: center !important;
+    flex: 0 0 auto !important;
+  }
+
+  #smileIntroView .guideline-video-wrapper {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 4px auto !important;
+    border-radius: 16px !important;
+    overflow: hidden !important;
+  }
+
+  #smileIntroView .guideline-video {
+    width: 100% !important;
+    height: auto !important;
+    max-height: auto !important;
+    object-fit: contain !important;
+    border-radius: 16px !important;
+  }
+
+  .guideline-video-wrapper::after {
+display: none;
+}
+
+  #smileIntroView .btn-intro-next {
+    width: 100% !important;
+    max-width: 260px !important;
+    height: 44px !important;
+    padding: 0 24px !important;
+    font-size: 16px !important;
+    border-radius: 10px !important;
+    margin: 8px auto 0 auto !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    flex: 0 0 auto !important;
+  }
+
+  /* ------------------------------------------------------------------------ */
+  /* 2️⃣ POPUP 1B: LIVE CAMERA VIEW & CAPTURED STATE (#smileCameraView)         */
+  /* ------------------------------------------------------------------------ */
+  .smile-camera-wrapper:not(.d-none),
+  #smileCameraView:not(.d-none) {
+    width: 100% !important;
+    height: 100% !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    position: relative !important;
+    overflow: hidden !important;
+  }
+
+  .smile-camera-wrapper.d-none,
+  #smileCameraView.d-none,
+  #smileModal .d-none,
+  #smileModal .hidden {
+    display: none !important;
+  }
+
+  .camera-viewport-container {
+    width: 100% !important;
+    height: 100% !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    aspect-ratio: auto !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    position: relative !important;
+    overflow: hidden !important;
+    background: #000000 !important;
+  }
+
+  .camera-viewport-container #video,
+  .camera-viewport-container #freezeImg {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    position: absolute !important;
+    inset: 0 !important;
+  }
+
+  .btn-switch-camera {
+    top: 20px !important;
+    left: 20px !important;
+    z-index: 30 !important;
+  }
+
+  .custom-camera-close {
+    top: 20px !important;
+    right: 20px !important;
+    z-index: 30 !important;
+  }
+
+  .face-frame-brackets {
+    top: 40% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 272px !important;
+    height: 359px !important;
+    max-width: 72% !important;
+    max-height: 52% !important;
+  }
+
+  .camera-bottom-overlay {
+    position: absolute !important;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 0 !important;
+    right: 0 !important;
+    padding: 0 16px !important;
+    z-index: 25 !important;
+  }
+
+  .camera-guide-text {
+    font-size: 13px !important;
+    margin-bottom: 12px !important;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9) !important;
+  }
+
+  #captureBtn.btn-capture-main {
+    min-width: 180px !important;
+    padding: 11px 28px !important;
+    font-size: 15px !important;
+    border-radius: 12px !important;
+  }
+
+  .camera-btn-captured {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: center !important;
+    gap: 12px !important;
+    width: 100% !important;
+  }
+
+  .camera-btn-captured .btn-recapture-main,
+  .camera-btn-captured .btn-confirm-main {
+    flex: 1 1 0 !important;
+    max-width: 160px !important;
+    padding: 11px 16px !important;
+    font-size: 14px !important;
+    white-space: nowrap !important;
+    border-radius: 10px !important;
+  }
+
+  /* ------------------------------------------------------------------------ */
+  /* 3️⃣ POPUP 2: CONTACT INFORMATION MODAL (#contactModal)                     */
+  /* ------------------------------------------------------------------------ */
+  #contactModal .modal-dialog {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 100% !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  #contactModal .modal-content {
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    background: #000000 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    position: relative !important;
+    height: 100% !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+
+  #contactModal .modal-body {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 16px !important;
+    box-sizing: border-box !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  #contactModal .contact-wrapper,
+  #contactModal .modal-body.contact-wrapper {
+    width: calc(100% - 32px) !important;
+    max-width: 360px !important;
+    margin: auto !important;
+    flex: 0 0 auto !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 34px 18px 20px 18px !important;
+    border-radius: 20px !important;
+    /* border: 1.5px solid #2e2e2e !important; */
+    position: relative !important;
+    background: #000000 !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+  }
+
+  #contactModal .btn-close {
+    position: absolute !important;
+    top: 20px !important;
+    right: 20px !important;
+    margin: 0 !important;
+    z-index: 1060 !important;
+    opacity: 0.85 !important;
+  }
+
+  #contactModal .contact-wrapper>a {
+    position: absolute !important;
+    top: 0 !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    z-index: 1050 !important;
+    display: inline-flex !important;
+    justify-content: center !important;
+    align-items: center !important;
   }
 
   #contactModal .contact-wrapper .usd-logo-img {
-    width: 27%;
-    left: 38.5%;
-    padding: 0px 12px;
-    top: -6.5%;
+    background-image: none !important;
+    background-color: #000000 !important;
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    transform: none !important;
+    width: 145px !important;
+    max-width: 48vw !important;
+    height: auto !important;
+    padding: 2px 10px !important;
+    display: block !important;
+  }
+
+  #contactModal .contact-title {
+    font-size: 19px !important;
+    font-weight: 600 !important;
+    color: #ffffff !important;
+    margin-top: 4px !important;
+    margin-bottom: 20px !important;
+    text-align: center !important;
+    letter-spacing: 0.3px !important;
+    font-family: "Barlow", sans-serif !important;
   }
 
   .contact-form .form-control {
-    height: 40px;
-    margin-bottom: 20px;
+    height: 44px !important;
+    border-radius: 25px !important;
+    border: 1px solid #9E9E9E !important;
+    background: #000000 !important;
+    color: #ffffff !important;
+    padding: 10px 18px !important;
+    margin-bottom: 14px !important;
+    font-size: 14px !important;
   }
 
-  .preview-title {
-    font-size: 22px;
+  .contact_input_phone {
+    display: flex !important;
+    width: 100% !important;
+    margin-bottom: 14px !important;
   }
 
-  /* .preview-modal-wrapper {
-    width: 100%;
-    height: 278px;
-    margin: 1rem auto 1.5rem;
-  } */
-  .preview-wrapper .row .col-6,
-  .preview-wrapper .row .col-12 {
-    margin-bottom: 16px;
+  .flag_icon_ai_main {
+    height: 44px !important;
+    border-radius: 25px 0 0 25px !important;
+    border: 1px solid #9E9E9E !important;
+    border-right: none !important;
+    background: #000000 !important;
+    padding: 0 10px 0 16px !important;
+    display: flex !important;
+    align-items: center !important;
+    flex-shrink: 0 !important;
+  }
+
+  #contactModal #leadPhone.custom_input_phone {
+    height: 44px !important;
+    border-radius: 0 25px 25px 0 !important;
+    border: 1px solid #9E9E9E !important;
+    border-left: 1px solid #9E9E9E !important;
+    background: #000000 !important;
+    margin-bottom: 0 !important;
+    padding: 10px 16px !important;
+  }
+
+  #contactModal #leadSubmitBtn {
+    width: 140px !important;
+    max-width: 160px !important;
+    height: 42px !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 8px auto 0 auto !important;
+    border-radius: 10px !important;
+    background: #141414 !important;
+    border: 1px solid #333333 !important;
+    color: #ffffff !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+    letter-spacing: 0.3px !important;
+  }
+
+  /* ------------------------------------------------------------------------ */
+  /* 4️⃣ POPUP 3: PREVIEW BEFORE & AFTER MODAL (#PreviewModal)                  */
+  /* ------------------------------------------------------------------------ */
+  #PreviewModal {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    background: #000000 !important;
+    background-color: #000000 !important;
+    z-index: 99999 !important;
+    overflow: hidden !important;
+  }
+
+  #PreviewModal .modal-dialog {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: #000000 !important;
   }
 
   #PreviewModal .modal-content {
-    padding: 15px 20px;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    background: #000000 !important;
+    position: relative !important;
+    width: 100% !important;
+    height: 100% !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+    border: none !important;
+    box-shadow: none !important;
   }
 
-  /* .preview-modal-wrapper{
-    width: 82%;
-  } */
-  .preview_img_wrapper img {
-    object-fit: cover;
-    /* object-fit: contain; */
+  #PreviewModal .btn-close {
+    position: absolute !important;
+    top: 16px !important;
+    right: 16px !important;
+    margin: 0 !important;
+    z-index: 1060 !important;
+    opacity: 0.85 !important;
+  }
+
+  #PreviewModal .modal-body {
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+    background: #000000 !important;
+  }
+
+  .preview-wrapper {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px)) 16px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  .preview-title {
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    color: #ffffff !important;
+    margin-top: 0 !important;
+    margin-bottom: 7px !important;
+    padding: 0 10px !important;
+    text-align: center !important;
+    letter-spacing: 0.2px !important;
+    font-family: "Barlow", sans-serif !important;
+    flex: 0 0 auto !important;
+  }
+
+  .preview-wrapper p {
+    font-size: 11px !important;
+    line-height: 1.3 !important;
+    margin-bottom: 16px !important;
+    padding: 0 10px !important;
+    color: #b0b0b0 !important;
+    text-align: center !important;
+    max-width: 320px !important;
+    flex: 0 0 auto !important;
+  }
+
+  .preview-modal-wrapper {
+    width: 100% !important;
+    max-width: 320px !important;
+    height: auto !important;
+    aspect-ratio: auto !important;
+    max-height: calc(100dvh - 215px) !important;
+    margin: 0 auto 6px auto !important;
+    border-radius: 16px !important;
+    border: 1.5px solid rgba(255, 255, 255, 0.85) !important;
+    position: relative !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    background: #000000 !important;
+    touch-action: none !important;
+    flex: 0 1 auto !important;
+  }
+
+  .preview-modal-wrapper .preview_img_wrapper:first-child {
+    position: relative !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    display: block !important;
+    overflow: hidden !important;
+  }
+
+  .preview-modal-wrapper .preview_img_wrapper:first-child img {
+    width: 100% !important;
+    height: auto !important;
+    max-height: calc(100dvh - 215px) !important;
+    display: block !important;
+    object-fit: cover !important;
+    object-position: center !important;
+  }
+
+  .preview-modal-wrapper .preview_img_wrapper:nth-child(2) {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    clip-path: inset(0px 0px 0px 50%);
+    -webkit-clip-path: inset(0px 0px 0px 50%);
+  }
+
+  .preview-modal-wrapper .preview_img_wrapper:nth-child(2) img {
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+    object-fit: cover !important;
+    object-position: center !important;
+  }
+
+  .preview-modal-wrapper .before-input {
+    touch-action: none !important;
+  }
+
+  .preview-wrapper .row {
+    margin: 8 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+    max-width: 310px !important;
+    flex: 0 0 auto !important;
+  }
+
+  .preview-wrapper .row .col-lg-3,
+  .preview-wrapper .row .col-lg-4,
+  .preview-wrapper .row .col-sm-6,
+  .preview-wrapper .row .col-12 {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .preview-wrapper #downloadBeforeBtn {
+    width: 100% !important;
+    height: 40px !important;
+    padding: 0 16px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    border-radius: 10px !important;
+    background: linear-gradient(180deg, #d8d8d8 0%, #a8a8a8 100%) !important;
+    color: #000000 !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    box-shadow: none !important;
+  }
+
+  .preview-wrapper #downloadBeforeBtn svg path {
+    fill: #000000 !important;
+  }
+
+  .preview-wrapper .btn-appoinment {
+    width: 100% !important;
+    height: 40px !important;
+    padding: 0 16px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    border-radius: 10px !important;
+    background: #000000 !important;
+    border: 1.5px solid #444444 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: none !important;
+  }
+
+  .preview-wrapper .btn-appoinment a {
+    color: #ffffff !important;
+    text-decoration: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    width: 100% !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+  }
+
+  #PreviewModal,
+  #PreviewModal .modal-dialog,
+  #PreviewModal .modal-content,
+  #PreviewModal .modal-body,
+  #PreviewModal .preview-wrapper {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+
+  #PreviewModal::-webkit-scrollbar,
+  #PreviewModal .modal-dialog::-webkit-scrollbar,
+  #PreviewModal .modal-content::-webkit-scrollbar,
+  #PreviewModal .modal-body::-webkit-scrollbar,
+  #PreviewModal .preview-wrapper::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
   }
 }
 
 @media (max-width: 480px) {
-  #contactModal .contact-wrapper .usd-logo-img {
-    width: 33%;
-    left: 33.5%;
-    padding: 0px 10px;
-    top: -4.8%;
-  }
-
   .banner-highlight {
     width: 100%;
   }
+}
 
-  /* .preview-modal-wrapper{
-    height: 250px;
+.contact_input_phone {
+  display: flex;
+  position: relative;
+}
+
+.flag_icon_ai_main {
+  width: auto;
+  height: 50px;
+  border-top: 1px solid #9E9E9E;
+  border-bottom: 1px solid #9E9E9E;
+  border-left: 1px solid #9E9E9E;
+  border-right: none;
+  border-bottom-left-radius: 25px;
+  border-top-left-radius: 25px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding-left: 16px;
+  user-select: none;
+}
+
+.custom_input_phone {
+  border-bottom-left-radius: 0px !important;
+  border-top-left-radius: 0px !important;
+}
+
+.flag_image {
+  width: 30px;
+  height: 18px;
+  /* border: 1px solid white; */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.flag_image>img {
+  width: 100%;
+  height: 100%;
+}
+
+.selected_code_text {
+  color: white;
+  margin-left: 8px;
+}
+
+.arrow_icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 5px;
+  margin-right: 5px;
+  transition: transform 0.3s ease;
+}
+
+.arrow_icon img {
+  transition: transform 0.3s ease;
+}
+
+/* Arrow Rotation on Click / Active State */
+.flag_icon_main.active .arrow_icon,
+.flag_icon_main.active .arrow_icon img,
+.input_icon_with_flag_main.active .arrow_icon,
+.input_icon_with_flag_main.active .arrow_icon img {
+  transform: rotate(90deg);
+}
+
+/* Country Dropdown Styles */
+.country-dropdown-menu,
+.country_dropdown_menu {
+  display: none;
+  position: absolute;
+  top: calc(72% + 8px);
+  left: 0;
+  width: 290px;
+  max-width: calc(100vw - 30px);
+  max-height: 280px;
+  background: #141414;
+  border: 1px solid white;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9);
+  z-index: 9999;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.country-dropdown-menu.show,
+.country_dropdown_menu.show {
+  display: block;
+}
+
+.country-dropdown-menu::-webkit-scrollbar,
+.country_dropdown_menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.country-dropdown-menu::-webkit-scrollbar-thumb,
+.country_dropdown_menu::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+}
+
+.country-search-box,
+.country_search_box {
+  position: sticky;
+  top: -10px;
+  background: #141414;
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 2;
+  margin-top: -2px;
+}
+
+.country-search-box input,
+.country_search_box input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: #222222;
+  color: #ffffff;
+  font-size: 14px;
+  outline: none;
+  font-family: inherit;
+}
+
+.country-search-box input:focus,
+.country_search_box input:focus {
+  border-color: #9E9E9E;
+}
+
+.country-list,
+.country_list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.country-item,
+.country_item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.country-item:hover,
+.country-item.active,
+.country_item:hover,
+.country_item.active {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.country-item-info,
+.country_item_info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.country-flag-img,
+.country_flag_img {
+  width: 24px;
+  height: 16px;
+  object-fit: cover;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.country-item-name,
+.country_item_name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.country-item-code,
+.country_item_code {
+  color: #aaaaaa;
+  font-size: 13px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.no-country-found,
+.no_country_found {
+  padding: 12px;
+  color: #aaaaaa;
+  text-align: center;
+  font-size: 14px;
+}
+
+@media (max-width:768px) {
+  .flag_icon_ai_main {
+    height: 42px !important;
   }
-  .preview-modal-wrapper{
-    width: 100%;
-  } */
+}
+
+
+
+/* Virtual Smile Contact Form Pincode & City Styles */
+.pincode-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.pincode-input-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+#contactModal #leadPincode,
+#contactModal #pincodeInput {
+  padding-right: 42px !important;
+}
+
+#contactModal #leadPincode.is-valid,
+#contactModal #pincodeInput.is-valid {
+  border: 1.5px solid #10b981 !important;
+  background: #000 !important;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.3) !important;
+  background-image: none !important;
+}
+
+#contactModal #leadPincode.is-invalid,
+#contactModal #pincodeInput.is-invalid {
+  border: 1.5px solid #ef4444 !important;
+  background: #000 !important;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.3) !important;
+  background-image: none !important;
+}
+
+.smile-pincode-spinner {
+  position: absolute;
+  right: 16px;
+  top: calc(50% - 12px);
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #c7a041;
+  border-radius: 50%;
+  animation: smilePinSpin 0.7s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes smilePinSpin {
+  to {
+    transform: translateY(-50%) rotate(360deg);
+  }
+}
+
+.smile-pincode-status-icon {
+  position: absolute;
+  right: 16px;
+  top: calc(50% - 12px);
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  pointer-events: none;
+}
+
+#contactModal #leadCity:read-only,
+#contactModal #leadCity[readonly],
+#contactModal #cityInput:read-only,
+#contactModal #cityInput[readonly] {
+  cursor: default !important;
+  background: #000000 !important;
+  border: 1px solid #9E9E9E !important;
+  border-radius: 25px !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+}
+
+.smile-city-pulse {
+  animation: smileCityPulse 1s ease;
+}
+
+@keyframes smileCityPulse {
+  0% {
+    box-shadow: none;
+  }
+
+  50% {
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.6) !important;
+  }
+
+  100% {
+    box-shadow: none;
+  }
+}
+
+@media (max-width:576px) {
+  .flag_icon_ai_main {
+    height: 44px !important;
+  }
+
+  #smileModal .modal-content {
+    border-radius: 18px;
+    padding-bottom: 10px;
+  }
+
+  #smileModal .btn-wrapper {
+    padding: 10px 10px 10px;
+  }
+
+  #smileGuideLine {
+    margin-bottom: 16px !important;
+    font-size: 16px !important;
+  }
+
+  .video-capture-wrapper .video-inner {
+    max-height: 350px;
+    overflow: hidden;
+  }
+
+  #smileModal .smile-close-btn {
+    width: 24px;
+    height: 24px;
+    top: 10px;
+    right: 10px;
+  }
+
+  .capture-inner {
+    font-size: 16px !important;
+    padding: 10px 0px !important;
+  }
+
+  .video-capture-wrapper .video-inner #video,
+  .video-capture-wrapper .video-inner #freezeImg {
+    object-fit: cover !important;
+  }
+
   .preview_img_wrapper img {
     object-fit: cover;
     /* object-fit: contain; */
   }
-}
 
-#captureBtn:not(:disabled) {
-  animation: pulse 1.2s infinite;
-}
-
-@keyframes pulse {
-  0% {
-    transform: scale(1);
+  .video-capture-wrapper {
+    aspect-ratio: 13 / 8;
   }
 
-  50% {
-    transform: scale(1.05);
-  }
-
-  100% {
-    transform: scale(1);
-  }
-}
-
-.btn-switch-camera {
+  .smile-pincode-spinner {
   position: absolute;
-  top: 15px;
-  right: 15px;
-  width: 44px;
-  height: 44px;
+  right: 16px;
+  top: calc(58% - 12px);
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #c7a041;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 10;
-  transition: all 0.3s ease;
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  animation: smilePinSpin 0.7s linear infinite;
+  pointer-events: none;
 }
 
-.btn-switch-camera:hover {
-  background: rgba(0, 0, 0, 0.8);
-  border-color: #d9a520;
-  color: #d9a520;
-  transform: scale(1.05);
-}
 
-.btn-switch-camera svg {
-  transition: transform 0.4s ease;
-}
-
-.btn-switch-camera:active svg {
-  transform: rotate(180deg);
-}
-
-.camera-denied-overlay {
+.smile-pincode-status-icon {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  right: 16px;
+  top: calc(58% - 12px);
+  transform: translateY(-50%);
   display: flex;
-  flex-direction: column;
-  justify-content: center;
   align-items: center;
-  background-color: #000;
-  z-index: 5;
-  text-align: center;
-  border-radius: inherit;
+  justify-content: center;
+  font-size: 16px;
+  pointer-events: none;
 }
-
-.camera-denied-overlay img.camera-icon {
-  width: 64px;
-  height: auto;
-}
-
-.camera-denied-overlay p {
-  color: #fff;
-  font-size: 1.1rem;
-  line-height: 1.5;
-  margin: 0;
-  font-weight: 400;
-  letter-spacing: 0.5px;
-}
-
-@media (max-width: 576px) {
-  #contactModal .contact-wrapper .usd-logo-img {
-    background-image: none !important;
-    background-color: #000 !important;
-    top: 0 !important;
-    transform: translateY(-50%) !important;
-    z-index: 1050 !important;
-  }
-}
-
-.upload-banner-btn {
-  border: 1px solid rgba(255, 255, 255, 0.4) !important;
-  color: #fff !important;
-  border-radius: 8px !important;
-  padding: 10px 22px !important;
-  font-weight: 500 !important;
-  background: rgba(255, 255, 255, 0.05) !important;
-  transition: all 0.3s ease !important;
-}
-
-.upload-banner-btn:hover {
-  background: rgba(217, 165, 32, 0.15) !important;
-  border-color: #d9a520 !important;
-  color: #d9a520 !important;
-  transform: translateY(-2px);
-}
-
-.upload-photo-btn {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border: 1px solid rgba(255, 255, 255, 0.35) !important;
-  color: #fff !important;
-  border-radius: 8px !important;
-  padding: 10px 20px !important;
-  font-weight: 500 !important;
-  transition: all 0.3s ease !important;
-}
-
-.upload-photo-btn:hover {
-  background: rgba(217, 165, 32, 0.2) !important;
-  border-color: #d9a520 !important;
-  color: #d9a520 !important;
 }

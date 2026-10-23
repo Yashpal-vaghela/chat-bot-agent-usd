@@ -15,7 +15,7 @@ from home.utils import send_mail
 from virtualsmileAI.forms import SmileDesignLeadForm
 from virtualsmileAI.gemini import add_logo_on_right
 from .yolo import decode_base64_image, run_inference_on_bgr, encode_image_to_base64_jpeg
-from .gemini import generate_smile_design
+from .gemini import generate_smile_design, PromptTooLongError
 from .models import SmileDesignLead
 
 THRESHOLD = getattr(settings, "TEETH_DETECTION_THRESHOLD", 0.55)
@@ -99,9 +99,9 @@ def create_smile_lead_api(request):
         return JsonResponse({"ok": False, "errors": form.errors}, status=400)
 
     obj = form.save(commit=False)
-    obj.before_image = before_img
+    obj.before_image = (before_img or "")[:255]
     after_img = request.session.get("smile_after", "")
-    obj.after_image = after_img
+    obj.after_image = (after_img or "")[:255]
     obj.save()
 
     def get_absolute_image_url(path):
@@ -166,7 +166,7 @@ def trigger_whatsapp_api(request):
 #     except SmileDesignLead.DoesNotExist:
 #         return JsonResponse({"ok": False, "error": "Lead not found"}, status=404)
 
-#     # Save media paths (optional)
+#     # Save       paths (optional)
 #     media_prefix = settings.MEDIA_URL.rstrip("/") + "/"
 
 #     def normalize_media_path(url):
@@ -247,36 +247,40 @@ def trigger_whatsapp_api(request):
 #         return JsonResponse({"ok": False, "error": str(e)}, status=502)
 
 @csrf_exempt
-# def detect_api(request):
-#     """
-#     POST JSON: { image: <base64 dataURL> }
-#     Returns: { conf: float, visible: bool, annotated: <base64 dataURL> }
-#     """
-#     if request.method != "POST":
-#         return HttpResponseBadRequest("POST required")
+def detect_api(request):
+    """
+    POST JSON: { image: <base64 dataURL> }
+    Returns: { conf: float, visible: bool, annotated: <base64 dataURL> }
+    """
+    if request.method != "POST":
+        return HttpResponseBadRequest("POST required")
 
-#     try:
-#         payload = json.loads(request.body.decode("utf-8"))
-#     except Exception:
-#         return HttpResponseBadRequest("Invalid JSON")
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return HttpResponseBadRequest("Invalid JSON")
 
-#     img_b64 = payload.get("image")
-#     if not img_b64:
-#         return HttpResponseBadRequest("Missing image")
+    img_b64 = payload.get("image")
+    if not img_b64:
+        return HttpResponseBadRequest("Missing image")
 
-#     try:
-#         img_bgr = decode_base64_image(img_b64)
-#         out = run_inference_on_bgr(img_bgr)
+    # # Smile detection commented out so every input is able to capture and change
+    # try:
+    #     img_bgr = decode_base64_image(img_b64)
+    #     out = run_inference_on_bgr(img_bgr)
+    #
+    #     conf = float(out["max_conf"])
+    #     visible = bool(out["visible"])
+    #
+    #     # You can keep returning annotated (even if you hide in UI)
+    #     annotated = encode_image_to_base64_jpeg(out["annotated_bgr"], quality=80)
+    #
+    #     return JsonResponse({"conf": conf, "visible": visible, "annotated": annotated})
+    # except Exception as e:
+    #     return JsonResponse({"error": str(e)}, status=400)
 
-#         conf = float(out["max_conf"])
-#         visible = bool(out["visible"])
-
-#         # You can keep returning annotated (even if you hide in UI)
-#         annotated = encode_image_to_base64_jpeg(out["annotated_bgr"], quality=80)
-
-#         return JsonResponse({"conf": conf, "visible": visible, "annotated": annotated})
-#     except Exception as e:
-#         return JsonResponse({"error": str(e)}, status=400)
+    # Bypass smile detection: accept any photo / input immediately
+    return JsonResponse({"conf": 1.0, "visible": True, "annotated": ""})
 
 @require_POST
 @csrf_exempt
@@ -345,13 +349,32 @@ def smile_design_api(request):
     # ✅ Run Gemini (full image, direct output without overlay)
     try:
         generate_smile_design(before_path, after_path)
+    except PromptTooLongError as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({"error": str(e)}, status=422)
     except RuntimeError as e:
+        import traceback
+        traceback.print_exc()
         msg = str(e)
-        if "GEMINI_API_KEY" in msg or "not installed" in msg.lower() or "not configured" in msg.lower():
+        if "FAL_API_KEY" in msg or "GEMINI_API_KEY" in msg or "not configured" in msg.lower():
             return JsonResponse({"error": msg}, status=501)
         return JsonResponse({"error": msg}, status=400)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return JsonResponse({"error": str(e)}, status=500)
+
+    # ✅ Stamp clinic logo on BOTH before and after images AFTER AI generation
+    # Gemini never saw the logo during generation (0 hallucinations),
+    # and the frontend Before/After comparison slider displays the exact logo at the exact same position!
+    logo_path = os.path.join(settings.MEDIA_ROOT, "logo", "USD-GOLDEN.png")
+    if os.path.isfile(logo_path):
+        try:
+            add_logo_on_right(before_path, logo_path)
+            add_logo_on_right(after_path, logo_path)
+        except Exception as e:
+            print("⚠️ Logo add failed:", e)
 
     request.session["smile_before"] = f"smile_design/before/{before_name}"
     request.session["smile_after"] = f"smile_design/after/{after_name}"
