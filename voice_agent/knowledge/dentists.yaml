@@ -29,7 +29,7 @@ voice_response:
 - If the doctor is NOT on our official list below: "No, that doctor is not currently a USD Certified Smile Designer. Please select our USD doctor, or you can check out our Find Dentist page." (🚨 ABSOLUTE MANDATORY: Riya must NEVER speak any dentist's name!).
 
 # Official USD Certified Smile Designers Database for Name Verification:
-• Ahmedabad: Dr. Rakesh Patel, Dr. Jigar P. Thakkar, Dr. Ankit Mataliya, Dr. Neerav Jhaveri, Dr. Alap D Shah, Dr. Abbas Noorani, Dr. Purvesh Chauhan, Dr. Ravi Shah, Dr. Janu Shah
+• Ahmedabad: Dr. Rakesh Patel, Dr. Jigar Thakkar, Dr. Ankit Mataliya, Dr. Neerav Jhaveri, Dr. Alap D Shah, Dr. Abbas Noorani, Dr. Purvesh Chauhan, Dr. Ravi Shah, Dr. Janu Shah
 • Surat: Dr. Bharat R. Patel, Dr. Parita Shah, Dr. Viren K Savani, Dr. Purvi Patel, Dr. Priyanka Kathiriya, Dr. Jay Patel
 • Mumbai: Dr. Vinita Tekchandani, Dr. Deepika Dalal, Dr. Nikita Motwani, Dr. Rohan Bandi, Dr. Moez Khakiani
 • Pune: Dr. Aarti Bhatewara
@@ -102,11 +102,10 @@ If we do not currently have a USD Certified Smile Designer directly in your city
 • Shillong / Dibrugarh / Tezpur -> Closest hub: Guwahati
 • Bikaner / Jodhpur / Ajmer / Udaipur -> Closest hub: Sri Ganganagar or Delhi/Ahmedabad
 
-When a user asks from a city without a local designer, say:
-"Currently, we don't have a Certified Smile Designer directly in [City], but our closest Certified Smile Designer is in [Closest Hub]. Would you like to know our certified designer's name in [Closest Hub]?"
+When a patient shares their city of residence during appointment booking, accept their city directly and ask for their 6-digit area pincode. DO NOT divert them or say we don't have a doctor in their city! Nearest doctors are determined based on their 6-digit area pincode after they provide it.
 
 follow_up:
-Would you like to connect with our nearest Certified Smile Designer?
+Could you please share your 6-digit area pincode?
 
 keywords:
 - closest city

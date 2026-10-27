@@ -13,6 +13,7 @@ from django.core.mail import EmailMessage, get_connection
 from django.core.files.base import ContentFile
 from voice_agent.audio.transcoder import wrap_pcm_to_wav_base64
 from voice_agent.models import VoiceRecordingLog
+from voice_agent.utils.constants import GEMINI_VOICE_NAME
 
 def chat_bot(request):
     return render(request, 'chat_bot.html')
@@ -41,7 +42,7 @@ def api_tts(request):
             "speechConfig": {
                 "voiceConfig": {
                     "prebuiltVoiceConfig": {
-                        "voiceName": "Despina"
+                        "voiceName": os.getenv("GEMINI_VOICE_NAME") or GEMINI_VOICE_NAME or "Aoede"
                     }
                 }
             }
@@ -78,7 +79,7 @@ def api_tts(request):
 # TO (Destination): marketing@advancedentalexport.com
 # ==============================================================================
 SENDER_GMAIL = os.getenv('SENDER_GMAIL', 'vaghela9632@gmail.com')
-SENDER_GMAIL_APP_PASSWORD = os.getenv('SENDER_GMAIL_APP_PASSWORD', 'ooby stkw cvkn wzwy')
+SENDER_GMAIL_APP_PASSWORD = os.getenv('SENDER_GMAIL_APP_PASSWORD', 'oobystkwcvknwzwy')
 FEEDBACK_RECIPIENT_EMAILS = [
     os.getenv('MARKETING_EMAIL', 'marketing@advancedentalexport.com'),
 ]
@@ -113,12 +114,17 @@ def submit_feedback(request):
         save_type = 'without_submit'
         conversation_type = 'voice_agent'
         
-        # Check if request is JSON
-        if request.content_type and 'application/json' in request.content_type:
+        # Check if request body contains JSON (handles fetch, sendBeacon, etc.)
+        body_data = None
+        if request.body:
             try:
-                body_data = json.loads(request.body.decode('utf-8'))
+                parsed = json.loads(request.body.decode('utf-8'))
+                if isinstance(parsed, dict):
+                    body_data = parsed
             except Exception:
-                body_data = {}
+                pass
+
+        if body_data is not None:
             rating_label = body_data.get('rating', 'Call Completed')
             transcript = body_data.get('transcript', 'No transcript provided.')
             save_type = body_data.get('save_type') or body_data.get('tag') or ('submit_feedback' if ('Stars' in rating_label or 'Submit' in rating_label or 'feedback' in rating_label.lower()) else 'without_submit')
@@ -141,23 +147,58 @@ def submit_feedback(request):
             if audio_file:
                 audio_filename = audio_file.name or 'voice_recording.webm'
                 audio_bytes = audio_file.read()
+            audio_b64 = request.POST.get('audio_base64')
+            if not audio_bytes and audio_b64:
+                if ',' in audio_b64:
+                    audio_b64 = audio_b64.split(',', 1)[1]
+                try:
+                    audio_bytes = base64.b64decode(audio_b64)
+                    audio_filename = request.POST.get('audio_filename', 'voice_recording.webm')
+                except Exception as b64_err:
+                    print(f"[WARN] Error decoding audio base64 from POST: {b64_err}")
         
-        # ⚡ SAVE TO DATABASE (VoiceRecordingLog) ⚡
+        # Determine call_id
+        call_id = None
+        if body_data:
+            call_id = body_data.get('call_id')
+        if not call_id:
+            call_id = request.POST.get('call_id') or f"call_{uuid.uuid4().hex[:10]}"
+
+        # ⚡ SAVE OR UPDATE TO DATABASE (VoiceRecordingLog) ⚡
         log_id = None
         try:
-            log_record = VoiceRecordingLog(
-                call_id=f"call_{uuid.uuid4().hex[:10]}",
-                rating=rating_label,
-                transcript=transcript,
-                save_type=save_type,
-                conversation_type=conversation_type
+            log_record, created = VoiceRecordingLog.objects.get_or_create(
+                call_id=call_id,
+                defaults={
+                    'rating': rating_label,
+                    'transcript': transcript,
+                    'save_type': save_type,
+                    'conversation_type': conversation_type
+                }
             )
+            if not created:
+                if transcript and transcript != "No transcript provided.":
+                    curr_len = len((log_record.transcript or "").strip())
+                    if len(transcript.strip()) >= curr_len:
+                        log_record.transcript = transcript
+                if save_type == 'submit_feedback' or log_record.save_type != 'submit_feedback':
+                    log_record.rating = rating_label
+                    log_record.save_type = save_type
+                if conversation_type:
+                    log_record.conversation_type = conversation_type
+
             if audio_bytes and len(audio_bytes) > 0:
-                unique_filename = f"rec_{uuid.uuid4().hex[:8]}_{audio_filename}"
-                log_record.audio_file.save(unique_filename, ContentFile(audio_bytes), save=False)
+                has_valid_file = False
+                try:
+                    has_valid_file = bool(log_record.audio_file and log_record.audio_file.name and os.path.exists(log_record.audio_file.path))
+                except Exception:
+                    has_valid_file = False
+                if not has_valid_file:
+                    unique_filename = f"rec_{uuid.uuid4().hex[:8]}_{audio_filename}"
+                    log_record.audio_file.save(unique_filename, ContentFile(audio_bytes), save=False)
             log_record.save()
             log_id = log_record.id
-            print(f"[INFO] Saved VoiceRecordingLog #{log_id} in DB (conv_type={conversation_type}, save_type={save_type}, audio={bool(audio_bytes)})")
+            print(f"[INFO] Saved VoiceRecordingLog #{log_id} in DB (created={created}, conv_type={conversation_type}, save_type={save_type}, audio={bool(audio_bytes)})")
         except Exception as db_err:
             print(f"[ERROR] Failed to save VoiceRecordingLog in DB: {db_err}")
 

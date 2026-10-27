@@ -23,11 +23,33 @@ class VoiceRecordingLog(models.Model):
         default='voice_agent'
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    token_details = models.TextField(blank=True, null=True)
+    total_tokens = models.IntegerField(default=0)
+    total_input_tokens = models.IntegerField(default=0)
+    total_output_tokens = models.IntegerField(default=0)
+    total_cost_usd = models.DecimalField(max_digits=10, decimal_places=6, default=0.0)
+    total_cost_inr = models.DecimalField(max_digits=10, decimal_places=4, default=0.0)
 
     class Meta:
         ordering = ['-created_at']
 
     def __str__(self):
         return f"[{self.get_conversation_type_display()} | {self.get_save_type_display()}] {self.rating} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+
+
+from account.models import UserSubmission
+
+class AppointmentSubmission(UserSubmission):
+    """
+    Proxy model of UserSubmission registered under Voice Agent app
+    so that appointments submitted via Voice & Chat agents appear directly
+    in the Voice Agent section of Django Admin.
+    """
+    class Meta:
+        proxy = True
+        app_label = 'voice_agent'
+        verbose_name = 'Appointment Lead / Booking'
+        verbose_name_plural = 'Appointment Leads / Bookings'
+
 
 

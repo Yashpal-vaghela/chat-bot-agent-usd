@@ -19,3 +19,4 @@ websockets>=12.0
 httpx>=0.27.0
 django-json-widget
 PyYAML
+redis>=5.0.0
