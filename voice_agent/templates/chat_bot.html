@@ -781,6 +781,12 @@
         userTypingTimer = setTimeout(removeUserTypingIndicator, 2500);
     }
 
+    // Last real chat bubble, skipping typing/speaking/thinking indicators appended to the log
+    function getLastChatMessage(log) {
+        const msgs = log ? log.querySelectorAll('.usd-msg-user, .usd-msg-bot') : [];
+        return msgs.length ? msgs[msgs.length - 1] : null;
+    }
+
     function removeUserTypingIndicator() {
         clearTimeout(userTypingTimer);
         if (userTypingDiv) {
@@ -1628,6 +1634,14 @@
 
             isMicSoftwareMuted = true;
             if (window.myvad) window.myvad.pause();
+
+            // Stop any voice reply that is already playing so chat mode stays silent
+            audioChunkQueue = [];
+            activeSources.forEach(source => { try { source.stop(); } catch (e) { } });
+            activeSources = [];
+            isAudioPlaying = false;
+            nextPlayTime = 0;
+            pendingAudioDecodes = 0;
             updateState('listening');
         }
         sessionStorage.setItem('usd_is_voice_mode', isVoiceMode.toString());
@@ -2840,7 +2854,7 @@
                             activeUserMessageDiv = null;
                         } else {
                             const log = document.getElementById('usd-chat-log');
-                            const lastMsg = log ? log.lastElementChild : null;
+                            const lastMsg = getLastChatMessage(log);
                             if (lastMsg && lastMsg.classList.contains('usd-msg-user') && lastMsg.dataset.isLive === "true") {
                                 const userP = lastMsg.querySelector('.usd-msg-text');
                                 if (userP) userP.innerText = cleanUserText;
@@ -2902,8 +2916,8 @@
                             activeBotMessageDiv = null;
                         } else {
                             const log = document.getElementById('usd-chat-log');
-                            const lastMsg = log ? log.lastElementChild : null;
-                            if (lastMsg && lastMsg.classList.contains('usd-msg-bot') && lastMsg.dataset.isLive === "true") {
+                            const lastMsg = getLastChatMessage(log);
+                            if (lastMsg && lastMsg.classList.contains('usd-msg-bot') && (lastMsg.dataset.isLive === "true" || lastMsg.querySelector('.usd-msg-text')?.innerText.trim() === finalText)) {
                                 const botP = lastMsg.querySelector('.usd-msg-text');
                                 if (botP) {
                                     if (!botP.innerText.trim() || finalText.length >= botP.innerText.trim().length) {
@@ -2959,6 +2973,8 @@
                         iosDebugSend('chunk', { i: data.index, q: audioChunkQueue.length, ahead: audioCtx ? +Math.max(0, nextPlayTime - audioCtx.currentTime).toFixed(3) : 0 });
                     }
                     removeBotThinkingIndicator();
+                    // Chat mode is text-only: drop audio still in flight from a voice-mode turn (e.g. the greeting)
+                    if (!isVoiceMode) return;
                     audioChunkQueue.push(data);
                     processAudioQueue();
                 }
@@ -3021,8 +3037,8 @@
                             delete lastBotMessageDiv.dataset.isLive;
                         } else {
                             const log = document.getElementById('usd-chat-log');
-                            const lastMsg = log ? log.lastElementChild : null;
-                            const lastP = (lastMsg && lastMsg.classList.contains('usd-msg-bot')) ? lastMsg.querySelector('.usd-msg-text') : null;
+                            const lastMsg = getLastChatMessage(log);
+                            const lastP =(lastMsg && lastMsg.classList.contains('usd-msg-bot')) ? lastMsg.querySelector('.usd-msg-text') : null;
                             if (!lastP || lastP.innerText.trim() !== finalText) {
                                 lastBotMessageDiv = logMessage('bot', finalText, finalTag);
                             } else {
@@ -3262,7 +3278,10 @@
 
         if (!socket || socket.readyState !== WebSocket.OPEN) {
             updateState('connecting', 'Connecting...');
-            await startWebSocket();
+            // A socket still CONNECTING is reused; opening another one would trigger a second greeting
+            if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
+                await startWebSocket();
+            }
             for (let i = 0; i < 30; i++) {
                 if (socket && socket.readyState === WebSocket.OPEN) break;
                 await new Promise(r => setTimeout(r, 100));
