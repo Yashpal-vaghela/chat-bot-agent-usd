@@ -1,5 +1,5 @@
 # =========================================
-# USD CERTIFIED SMILE DESIGNERS & VERIFICATION DIRECTORY
+# USD AUTHORISED SMILE DESIGNERS & VERIFICATION DIRECTORY
 # =========================================
 
 intent: dentist_comparison_final
@@ -56,18 +56,18 @@ rules:
 
 --------------------------
 
-intent: find_certified_dentist_by_city
+intent: find_authorised_dentist_by_city
 
 user_questions:
 - Do you have a smile designer in Mumbai?
 - Do you have dentists in Ahmedabad?
 - Dentist in Pune?
 - Do you have a doctor in Delhi?
-- Find a certified smile designer near me.
+- Find a authorised smile designer near me.
 - Which cities do you have dentists in?
 
 voice_response:
-Yes, we have USD Certified Smile Designers available in [City]! Would you like to know how our protocols work or schedule a consultation?
+Yes, we have USD Authorised Smile Designers available in [City]! Would you like to know how our protocols work or schedule a consultation?
 (MANDATORY RULE: Never proactively recite or list doctor names when the user asks about a city).
 
 intent: verify_dentist_by_name
@@ -75,14 +75,14 @@ intent: verify_dentist_by_name
 user_questions:
 - Is Dr. Rakesh Patel your doctor?
 - Is Dr. Minu Arora in your list?
-- Is Dr. Aarti Bhatewara a USD certified smile designer?
+- Is Dr. Aarti Bhatewara a USD authorised smile designer?
 - Do you know Dr. [Name]?
 
 voice_response:
-- If the doctor is on our official list below: "Yes, they are a USD Certified Smile Designer in [City]." (🚨 ABSOLUTE MANDATORY: Riya must NEVER speak the dentist's name aloud! Simply confirm they are our certified designer in [City]).
-- If the doctor is NOT on our official list below: "No, that doctor is not currently a USD Certified Smile Designer. Please select our USD doctor, or you can check out our Find Dentist page." (🚨 ABSOLUTE MANDATORY: Riya must NEVER speak any dentist's name!).
+- If the doctor is on our official list below: "Yes, they are a USD Authorised Smile Designer in [City]." (🚨 ABSOLUTE MANDATORY: Riya must NEVER speak the dentist's name aloud! Simply confirm they are our authorised designer in [City]).
+- If the doctor is NOT on our official list below: "No, that doctor is not currently a USD Authorised Smile Designer. Please select our USD doctor, or you can check out our Find Dentist page." (🚨 ABSOLUTE MANDATORY: Riya must NEVER speak any dentist's name!).
 
-# Official USD Certified Smile Designers Database for Name Verification:
+# Official USD Authorised Smile Designers Database for Name Verification:
 • Ahmedabad: Dr. Rakesh Patel, Dr. Jigar Thakkar, Dr. Ankit Mataliya, Dr. Neerav Jhaveri, Dr. Alap D Shah, Dr. Abbas Noorani, Dr. Purvesh Chauhan, Dr. Ravi Shah, Dr. Janu Shah
 • Surat: Dr. Bharat R. Patel, Dr. Parita Shah, Dr. Viren K Savani, Dr. Purvi Patel, Dr. Priyanka Kathiriya, Dr. Jay Patel
 • Mumbai: Dr. Vinita Tekchandani, Dr. Deepika Dalal, Dr. Nikita Motwani, Dr. Rohan Bandi, Dr. Moez Khakiani
@@ -111,7 +111,7 @@ follow_up:
 Which city is most convenient for your smile consultation?
 
 keywords:
-- certified dentist
+- authorised dentist
 - dentist in city
 - smile designer list
 - doctors near me
@@ -139,7 +139,7 @@ emotion:
 seeking_recommendation
 
 voice_response:
-If we do not currently have a USD Certified Smile Designer directly in your city, we guide you to our nearest certified city hub:
+If we do not currently have a USD Authorised Smile Designer directly in your city, we guide you to our nearest authorised city hub:
 
 • Nashik / Thane / Navi Mumbai -> Closest hub: Mumbai or Pune
 • Noida / Ghaziabad / Faridabad / Chandigarh -> Closest hub: New Delhi or Gurugram
@@ -176,22 +176,22 @@ user_questions:
 - Is Dr. Sharma part of USD?
 - Do you know Dr. ABC?
 - Can my dentist Dr. XYZ do USD veneers?
-- Is my local doctor certified by you?
+- Is my local doctor authorised by you?
 - Check if this doctor is in USD.
 
 emotion:
 curious / verifying
 
 voice_response:
-We do not have information on that dentist as they are not currently a USD Certified Smile Designer. We only maintain verified records and treatment protocols for our official USD Certified Smile Designers.
+We do not have information on that dentist as they are not currently a USD Authorised Smile Designer. We only maintain verified records and treatment protocols for our official USD Authorised Smile Designers.
 
 follow_up:
-Would you like to consult one of our official USD Certified Smile Designers?
+Would you like to consult one of our official USD Authorised Smile Designers?
 
 keywords:
 - non usd dentist
 - check doctor
-- is my doctor certified
+- is my doctor authorised
 - unknown dentist
 
 --------------------------
@@ -200,7 +200,7 @@ intent: dentist_join_usd_partnership
 
 user_questions:
 - How can my dentist join USD?
-- How can a dentist become a Certified Smile Designer?
+- How can a dentist become a Authorised Smile Designer?
 - I am a dentist, how do I join?
 - How do dentists register with Ultimate Smile Design?
 - Where is the dentist connect page?
@@ -209,7 +209,7 @@ emotion:
 interested / professional
 
 voice_response:
-Dentists who wish to become USD Certified Smile Designers can easily apply with us! On your screen, you can see the 'For Dentists' option. If you are on a mobile phone, tap the 3-line menu icon in the header, select 'For Dentists', and fill out your details. Our team will get in touch with you!
+Dentists who wish to become USD Authorised Smile Designers can easily apply with us! On your screen, you can see the 'For Dentists' option. If you are on a mobile phone, tap the 3-line menu icon in the header, select 'For Dentists', and fill out your details. Our team will get in touch with you!
 
 follow_up:
 [LINK_CONNECT]
@@ -218,6 +218,6 @@ keywords:
 - join usd
 - dentist connect
 - for dentists
-- become certified
+- become authorised
 - partner dentist
 - doctor registration

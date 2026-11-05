@@ -22,14 +22,14 @@ ENABLE_GODADDY_SYNC = os.getenv("ENABLE_GODADDY_SYNC", "false").lower() in ("tru
 GODADDY_SYNC_URL = os.getenv("GODADDY_SYNC_URL") or os.getenv("INTERNAL_SYNC_URL") or "api/internal/save-lead/"
 INTERNAL_SYNC_SECRET = os.getenv("INTERNAL_SYNC_SECRET", "usd-secret-sync-token-2026")
 
-CERTIFIED_CITIES = {
+AUTHORISED_CITIES = CERTIFIED_CITIES = {
     "Ahmedabad", "Surat", "Mumbai", "Pune", "Vadodara", "Rajkot", "Jamnagar",
     "Bharuch", "Halvad", "Dhrangadhra", "New Delhi", "Delhi", "Gurugram", "Gurgaon",
     "Indore", "Gwalior", "Bangalore", "Bengaluru", "Hyderabad", "Chennai", "Guntur",
     "Sangli", "Guwahati", "Faridkot", "Sri Ganganagar", "Malda"
 }
 
-ALL_CERTIFIED_DOCTORS = [
+ALL_AUTHORISED_DOCTORS = ALL_CERTIFIED_DOCTORS = [
     "Dr. Rakesh Patel", "Dr. Jigar P. Thakkar", "Dr. Ankit Mataliya", "Dr. Neerav Jhaveri", "Dr. Alap D Shah", "Dr. Abbas Noorani", "Dr. Purvesh Chauhan", "Dr. Ravi Shah", "Dr. Janu Shah",
     "Dr. Bharat R. Patel", "Dr. Parita Shah", "Dr. Viren K Savani", "Dr. Purvi Patel", "Dr. Priyanka Kathiriya", "Dr. Jay Patel",
     "Dr. Vinita Tekchandani", "Dr. Deepika Dalal", "Dr. Nikita Motwani", "Dr. Rohan Bandi", "Dr. Moez Khakiani",
@@ -179,7 +179,7 @@ def is_matched_doctor(doc_str: str, city: str = None) -> str:
         return ""
     import re
     d_clean = doc_str.lower().strip()
-    if d_clean in ["none", "null", "usd certified smile designer", "doctor", "dentist", "any", "not provided", ""]:
+    if d_clean in ["none", "null", "usd certified smile designer", "usd authorised smile designer", "usd authorized smile designer", "doctor", "dentist", "any", "not provided", ""]:
         return ""
 
     placeholder_words = [

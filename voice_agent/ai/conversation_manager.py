@@ -67,7 +67,7 @@ def mark_key_rate_limited(key):
     import time
     _KEY_COOLDOWNS[key] = time.time() + 60.0
 
-ALL_CERTIFIED_DOCTORS = [
+ALL_AUTHORISED_DOCTORS = ALL_CERTIFIED_DOCTORS = [
     "Dr. Rakesh Patel", "Dr. Jigar P. Thakkar", "Dr. Ankit Mataliya", "Dr. Neerav Jhaveri", "Dr. Alap D Shah", "Dr. Abbas Noorani", "Dr. Purvesh Chauhan", "Dr. Ravi Shah", "Dr. Janu Shah",
     "Dr. Bharat R. Patel", "Dr. Parita Shah", "Dr. Viren K Savani", "Dr. Purvi Patel", "Dr. Priyanka Kathiriya", "Dr. Jay Patel",
     "Dr. Vinita Tekchandani", "Dr. Deepika Dalal", "Dr. Nikita Motwani", "Dr. Rohan Bandi", "Dr. Moez Khakiani",
@@ -82,7 +82,7 @@ ALL_CERTIFIED_DOCTORS = [
     "Dr. Adil Lyngdoh", "Dr. Asmita Sodhi", "Dr. Neetu Jindal", "Dr. A K Saha"
 ]
 
-CERTIFIED_CITIES = [
+AUTHORISED_CITIES = CERTIFIED_CITIES = [
     "Ahmedabad", "Surat", "Mumbai", "Pune", "Vadodara", "Rajkot", "Jamnagar",
     "Bharuch", "Halvad", "Dhrangadhra", "New Delhi", "Delhi", "Gurugram", "Gurgaon",
     "Indore", "Gwalior", "Bangalore", "Bengaluru", "Hyderabad", "Chennai", "Guntur",
@@ -468,7 +468,7 @@ def find_doctor_in_text(text_to_search, city=None):
     # Check for Master Ceramist references - Ceramists work in lab and are NOT clinical doctors
     ceramist_terms = ["ceramist", "सिरामिस्ट", "સેરેમિસ્ટ", "haresh savani", "हरेश सवाणी", "હરેશ સવાણી", "master ceramist"]
     if any(ct in tl for ct in ceramist_terms):
-        # Do not treat ceramist query as a doctor selection unless a certified doctor is explicitly named
+        # Do not treat ceramist query as a doctor selection unless an authorised doctor is explicitly named
         has_explicit_doc = any(d.lower() in tl for d in ALL_CERTIFIED_DOCTORS)
         if not has_explicit_doc:
             return None
@@ -493,7 +493,7 @@ def detect_uncertified_doctor(text_to_search):
     m = re.search(r"\b(?:dr\.?|doctor)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)", text_to_search, re.IGNORECASE)
     if m:
         cand = m.group(0).strip()
-        # If it matches an official USD certified doctor, it's certified (not uncertified)
+        # If it matches an official USD authorised doctor, it's authorised (not uncertified)
         if find_doctor_in_text(cand):
             return None
         return cand
@@ -983,7 +983,7 @@ def get_missing_field_message(lang, missing_type, city=None):
             "ml": "നിങ്ങളുടെ അപ്പോയിന്റ്മെന്റ് സമർപ്പിക്കുന്നതിന് മുമ്പ്, നിങ്ങൾ ഏത് നഗരത്തിലാണ് ഉള്ളത്?",
             "pa": "ਤੁਹਾਡੀ ਮੁਲਾਕਾਤ ਦਰਜ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ, ਤੁਸੀਂ ਕਿਸ ਸ਼ਹਿਰ ਵਿੱਚ ਸਥਿਤ ਹੋ?",
             "or": "ଆପଣଙ୍କ ଆପଏଣ୍ଟମେଣ୍ଟ ଦାଖଲ କରିବା ପୂର୍ବରୁ, ଆପଣ କେଉଁ ସହରରେ ଅବସ୍ଥିତ?",
-            "en": "Before I can submit your appointment request, which city are you located in so I can check for our closest USD Certified Smile Designer?"
+            "en": "Before I can submit your appointment request, which city are you located in so I can check for our closest USD Authorised Smile Designer?"
         },
         "concern": {
             "gu": "તમારી અપૉઇન્ટમેન્ટ સબમિટ કરતાં પહેલાં, તમને દાંતની કઈ સમસ્યા માટે કન્સલ્ટેશન કરવું છે?",
@@ -999,7 +999,7 @@ def get_missing_field_message(lang, missing_type, city=None):
             "en": "Before I can submit your appointment request, what dental concern or smile improvement would you like to discuss?"
         },
         "doctor": {
-            "gu": f"તમારી અપૉઇન્ટમેન્ટ સબમિટ કરતાં પહેલાં, તમે {city or 'શહેર'}માં કયા USD સર્ટિફાઇડ ડૉક્ટર સાથે કન્સલ્ટ કરવા માંગો છો?",
+            "gu": f"તમારી અપૉઇન્ટમેન્ટ સબમિટ કરતાં પહેલાં, તમે {city or 'શહેર'}માં કયા USD Authorised Doctor સાથે કન્સલ્ટ કરવા માંગો છો?",
             "hi": f"आपकी अपॉइंटमेंट सबमिट करने से पहले, आप {city or 'शहर'} में किस USD सर्टिफाइड डॉक्टर से कंसल्टेशन करना चाहते हैं?",
             "mr": f"तुमची अपॉइंटमेंट सबमिट करण्यापूर्वी, तुम्ही {city or 'शहरात'} कोणत्या USD प्रमाणित डॉक्टरांशी सल्लामसलत करू इच्छिता?",
             "bn": f"আপনার অ্যাপয়েন্টমেন্ট জমা দেওয়ার আগে, আপনি {city or 'শহরে'} কোন USD সার্টিফাইড ডাক্তারের সাথে পরামর্শ করতে চান?",
@@ -1009,7 +1009,7 @@ def get_missing_field_message(lang, missing_type, city=None):
             "ml": f"നിങ്ങളുടെ അപ്പോയിന്റ്മെന്റ് സമർപ്പിക്കുന്നതിന് മുമ്പ്, {city or 'നഗരത്തിൽ'} ഏത് USD സർട്ടിഫൈഡ് ഡോക്ടറുമായി കൺസൾട്ട് ചെയ്യാൻ ആഗ്രഹിക്കുന്നു?",
             "pa": f"ਤੁਹਾਡੀ ਮੁਲਾਕਾਤ ਦਰਜ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ, ਤੁਸੀਂ {city or 'ਸ਼ਹਿਰ'} ਵਿੱਚ ਕਿਸ USD ਪ੍ਰਮਾਣਿਤ ਡਾਕਟਰ ਨਾਲ ਸਲਾਹ ਕਰਨਾ ਚਾਹੁੰਦੇ ਹੋ?",
             "or": f"ଆପଣଙ୍କ ଆପଏଣ୍ଟମେଣ୍ଟ ଦାଖଲ କରିବା ପୂର୍ବରୁ, ଆପଣ {city or 'ସହରରେ'} କେଉଁ USD ସାର୍ଟିଫାଇଡ୍ ଡାକ୍ତରଙ୍କ ସହ ପରାମର୍ଶ କରିବାକୁ ଚାହାଁନ୍ତି?",
-            "en": f"Before I can submit your appointment request, which USD Certified Smile Designer would you like to consult with in {city or 'your city'}?"
+            "en": f"Before I can submit your appointment request, which USD Authorised Smile Designer would you like to consult with in {city or 'your city'}?"
         },
         "phone": {
             "gu": "તમારી અપૉઇન્ટમેન્ટ સબમિટ કરતાં પહેલાં, કૃપા કરીને તમારો ૧૦ અંકનો મોબાઈલ નંબર આપશો?",
@@ -1384,7 +1384,7 @@ class ConversationManager:
             "नहीं", "नही", "नथी", "ना", "नाही", "नको", "नकोस", "नहीँ", "नहींजी", "न", "है", "हैं", "हूँ", "हुँ", "था", "थी", "थे", "हो", "गा", "गी", "गे", "से", "तो", "भी", "ही",
             "tame", "tamne", "mane", "khotu", "sachu", "nondhyu", "tabiyat", "maru", "tamaru", "tamari", "tamaro", "tamara", "pashu", "mare",
             "tum", "hum", "aap", "mujhe", "tumhe", "galat", "sahi", "naam", "name",
-            "certified", "doctor", "designer", "smile", "najik", "najikna", "clinic",
+            "authorised", "authorized", "certified", "doctor", "designer", "smile", "najik", "najikna", "clinic",
             "not", "no", "never", "none", "neither", "nor", "nathi", "nahi", "nahin", "naa", "nah", "nope",
             "barabar", "yaad", "bhul", "bhuli", "shuru", "karo", "kari", "karvu", "karvo", "karvi",
             "edit", "update", "change", "number", "mobile", "phone", "badlo", "badlu",
@@ -2592,7 +2592,7 @@ class ConversationManager:
         elif pending_doc:
             active_memory += f"\n- PENDING DOCTOR CANDIDATE: {pending_doc} (Patient gave partial name '{user_text}'). NEXT IMMEDIATE STEP (MANDATORY): Ask to confirm the full name and city: 'Are you talking about {pending_doc} from {patient_city or 'your city'}?'"
         elif uncert_doc:
-            active_memory += f"\n- CRITICAL ALERT: The user mentioned '{uncert_doc}', who is NOT on our official certified list! Politely refuse: '{uncert_doc} is not on our certified list as they are not a USD Certified Smile Designer. Please choose one of our certified smile designers from {patient_city or 'your city'}, and let me know whenever you are ready.' (CRITICAL: Do NOT list doctor names, do NOT accept '{uncert_doc}', and do NOT proceed until a certified doctor is chosen)."
+            active_memory += f"\n- CRITICAL ALERT: The user mentioned '{uncert_doc}', who is NOT on our official authorised list! Politely refuse: '{uncert_doc} is not on our authorised list as they are not a USD Authorised Smile Designer. Please choose one of our authorised smile designers from {patient_city or 'your city'}, and let me know whenever you are ready.' (CRITICAL: Do NOT list doctor names, do NOT accept '{uncert_doc}', and do NOT proceed until an authorised doctor is chosen)."
         mismatch_info = getattr(self.session, 'city_doctor_mismatch', None)
         if mismatch_info:
             d_city = mismatch_info['doctor_city']
@@ -2973,11 +2973,11 @@ class ConversationManager:
             if not pin:
                 next_step_instruction = (
                     f"DIRECT INQUIRY FOR DENTIST NAMES (PINCODE REQUIRED FIRST):\n"
-                    f"The patient directly asked for USD Certified Smile Designer / dentist names before booking an appointment.\n"
-                    f"You MUST ask for their 6-digit area pincode first so you can find their nearest USD Certified Smile Designer:\n"
-                    f"• English: 'To help find your nearest USD Certified Smile Designer, could you please tell me your 6-digit area pincode?'\n"
-                    f"• Gujarati: 'તમારા સૌથી નજીકના USD સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર શોધવા માટે, કૃપા કરીને તમારા વિસ્તારનો 6 અંકનો પિનકોડ જણાવશો?'\n"
-                    f"• Hindi: 'आपके सबसे नजदीकी USD सर्टिफाइड स्माइल डिज़ाइनर ढूंढने के लिए, कृपया अपने क्षेत्र का 6 अंकों का पिनकोड बता दीजिए?'"
+                    f"The patient directly asked for USD Authorised Smile Designer / dentist names before booking an appointment.\n"
+                    f"You MUST ask for their 6-digit area pincode first so you can find their nearest USD Authorised Smile Designer:\n"
+                    f"• English: 'To help find your nearest USD Authorised Smile Designer, could you please tell me your 6-digit area pincode?'\n"
+                    f"• Gujarati: 'તમારા સૌથી નજીકના USD Authorised Smile Designer શોધવા માટે, કૃપા કરીને તમારા વિસ્તારનો 6 અંકનો પિનકોડ જણાવશો?'\n"
+                    f"• Hindi: 'आपके सबसे नजदीकी USD Authorised Smile Designer ढूंढने के लिए, कृपया अपने क्षेत्र का 6 अंकों का पिनकोड बता दीजिए?'"
                 )
             else:
                 from voice_agent.services.dentist_service import format_dentists_speech_text
@@ -2989,7 +2989,7 @@ class ConversationManager:
                 )
                 next_step_instruction = (
                     f"DIRECT INQUIRY FOR DENTIST NAMES (SPEAK 3 NEAREST DENTISTS + OFFER BOOKING):\n"
-                    f"Speak the 3 nearest USD Certified Smile Designers for pincode {pin}, and then ask if we should continue their appointment booking with one of these dentists:\n"
+                    f"Speak the 3 nearest USD Authorised Smile Designers for pincode {pin}, and then ask if we should continue their appointment booking with one of these dentists:\n"
                     f"'{speech_rec}'\n"
                     f"Follow-up question in {user_lang}: 'Should we continue with your appointment booking with one of these dentists?'\n"
                     f"• Gujarati: 'શું આપણે આમાંથી કોઈ ડૉક્ટર સાથે તમારી અપૉઇન્ટમેન્ટ બુકિંગ આગળ વધારીએ?'\n"
@@ -3018,12 +3018,12 @@ class ConversationManager:
                 next_step_instruction = (
                     f"STEP 2.5 (MESSAGE 4 - CONCERN ACKNOWLEDGEMENT & CONSULTATION OFFER - MANDATORY PERMISSION GATE):\n"
                     f"The patient '{display_name}' revealed their dental concern: '{cn}'.\n"
-                    f"Empathetically acknowledge their specific concern in {user_lang} and ask if they would like you to help book a consultation appointment with our USD Certified Smile Designer to resolve it!\n"
+                    f"Empathetically acknowledge their specific concern in {user_lang} and ask if they would like you to help book a consultation appointment with our USD Authorised Smile Designer to resolve it!\n"
                     f"🚨 CRITICAL MANDATORY GATE: DO NOT ask for profession yet in Message 4! DO NOT start booking, DO NOT ask for City, Pincode, or Doctor yet in this turn until the patient explicitly says YES or agrees!\n"
                     f"🚨 ONCE IS ENOUGH: If the patient declines, says no, or asks a question, NEVER RE-ASK for consultation booking again!\n"
-                    f"• Gujarati: 'હું સમજી શકું છું કે તમને {cn}ની સમસ્યા છે, {display_name}. શું હું આના ઉકેલ માટે અમારા USD સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર સાથે કન્સલ્ટેશન અપૉઇન્ટમેન્ટ બુક કરવામાં મદદ કરું?'\n"
-                    f"• Hindi: 'मैं समझ सकती हूँ कि आपको {cn} की समस्या आ रही है, {display_name}। क्या मैं इसके समाधान के लिए हमारे USD सर्टिफाइड स्माइल डिज़ाइनर के साथ अपॉइंटमेंट बुक करने में आपकी मदद करूँ?'\n"
-                    f"• English: 'I understand you are experiencing {cn}, {display_name}. Would you like me to help book a consultation appointment with our USD Certified Smile Designer for this?'"
+                    f"• Gujarati: 'હું સમજી શકું છું કે તમને {cn}ની સમસ્યા છે, {display_name}. શું હું આના ઉકેલ માટે અમારા USD Authorised Smile Designer સાથે કન્સલ્ટેશન અપૉઇન્ટમેન્ટ બુક કરવામાં મદદ કરું?'\n"
+                    f"• Hindi: 'मैं समझ सकती हूँ कि आपको {cn} की समस्या आ रही है, {display_name}। क्या मैं इसके समाधान के लिए हमारे USD Authorised Smile Designer के साथ अपॉइंटमेंट बुक करने में आपकी मदद करूँ?'\n"
+                    f"• English: 'I understand you are experiencing {cn}, {display_name}. Would you like me to help book a consultation appointment with our USD Authorised Smile Designer for this?'"
                 )
         elif getattr(self.session, 'city_confirm_needed', False) or asking_field == "city_confirmation":
             self.session.asking_for_field = "city_confirmation"
@@ -3036,17 +3036,17 @@ class ConversationManager:
                 f"• Gujarati: 'તમારા પિનકોડ {p_pin} મુજબ, તમે {p_cit} વિસ્તારમાં રહો છો, બરાબર ને?'\n"
                 f"• Hindi: 'आपके पिनकोड {p_pin} के अनुसार, आप {p_cit} क्षेत्र में रहते हैं, सही ना?'\n"
                 f"• English: 'Based on your pincode {p_pin}, you reside in {p_cit} area, right?'\n"
-                f"🚨 CRITICAL MANDATORY: Once confirmed, lock city and pincode, then recommend the 3 nearest USD Certified Smile Designers!"
+                f"🚨 CRITICAL MANDATORY: Once confirmed, lock city and pincode, then recommend the 3 nearest USD Authorised Smile Designers!"
             )
         elif not pin or asking_field == "pincode":
             self.session.asking_for_field = "pincode"
             next_step_instruction = (
                 f"STEP 3 (6-DIGIT AREA PINCODE FIRST):\n"
                 f"The patient '{display_name}' has agreed to consultation for concern '{cn}'.\n"
-                f"Ask for their 6-digit area pincode in {user_lang} so you can identify their area and find their nearest USD Certified Smile Designer:\n"
-                f"• Gujarati: 'તમારા સૌથી નજીકના USD સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર શોધવા માટે, તમારા વિસ્તારનો 6 અંકનો પિનકોડ જણાવશો?'\n"
-                f"• Hindi: 'आपके सबसे नजदीकी USD सर्टिफाइड स्माइल डिज़ाइनर ढूंढने के लिए, आपके क्षेत्र का 6 अंकों का पिनकोड क्या है?'\n"
-                f"• English: 'Great, {display_name}! To help find your nearest USD Certified Smile Designer, could you please tell me your 6-digit area pincode?'\n"
+                f"Ask for their 6-digit area pincode in {user_lang} so you can identify their area and find their nearest USD Authorised Smile Designer:\n"
+                f"• Gujarati: 'તમારા સૌથી નજીકના USD Authorised Smile Designer શોધવા માટે, તમારા વિસ્તારનો 6 અંકનો પિનકોડ જણાવશો?'\n"
+                f"• Hindi: 'आपके सबसे नजदीकी USD Authorised Smile Designer ढूंढने के लिए, आपके क्षेत्र का 6 अंकों का पिनकोड क्या है?'\n"
+                f"• English: 'Great, {display_name}! To help find your nearest USD Authorised Smile Designer, could you please tell me your 6-digit area pincode?'\n"
                 f"🚨 CRITICAL MANDATORY: Pincode must be 6 digits. Do NOT ask for city or doctor yet!"
             )
         elif not ct or asking_field == "city":
@@ -3102,15 +3102,15 @@ class ConversationManager:
                 next_step_instruction = (
                     f"STEP 5 (DOCTOR SELECTION CONFIRMED AS TEAM GUIDANCE + 10-DIGIT MOBILE NUMBER):\n"
                     f"The patient acknowledged ('{user_text}'). Accept clinic team guidance for doctor selection and immediately ask for their 10-digit mobile number in {user_lang}:\n"
-                    f"• English: 'Wonderful! Our clinic team will connect you with the best available USD Certified Smile Designer. Could you please provide your 10-digit mobile phone number so our team can contact you?'\n"
-                    f"• Gujarati: 'બહુ સરસ! અમારી ટીમ તમારા માટે યોગ્ય USD સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર નક્કી કરશે. કૃપા કરીને તમારો 10 અંકનો મોબાઇલ નંબર જણાવશો જેથી અમારી ટીમ તમારો સંપર્ક કરી શકે?'\n"
-                    f"• Hindi: 'बहुत बढ़िया! हमारी टीम आपके लिए सबसे उपयुक्त USD सर्टिफाइड स्माइल डिज़ाइनर तय करेगी। कृपया अपना 10 अंकों का मोबाइल नंबर बता दीजिए ताकि हमारी टीम आपसे संपर्क कर सके?'\n"
+                    f"• English: 'Wonderful! Our clinic team will connect you with the best available USD Authorised Smile Designer. Could you please provide your 10-digit mobile phone number so our team can contact you?'\n"
+                    f"• Gujarati: 'બહુ સરસ! અમારી ટીમ તમારા માટે યોગ્ય USD Authorised Smile Designer નક્કી કરશે. કૃપા કરીને તમારો 10 અંકનો મોબાઇલ નંબર જણાવશો જેથી અમારી ટીમ તમારો સંપર્ક કરી શકે?'\n"
+                    f"• Hindi: 'बहुत बढ़िया! हमारी टीम आपके लिए सबसे उपयुक्त USD Authorised Smile Designer तय करेगी। कृपया अपना 10 अंकों का मोबाइल नंबर बता दीजिए ताकि हमारी टीम आपसे संपर्क कर सके?'\n"
                     f"🚨 MANDATORY: DO NOT show review summary until a valid 10-digit mobile phone number is provided!"
                 )
             else:
                 next_step_instruction = (
                     f"STEP 4 (DOCTOR SELECTION - GUIDANCE):\n"
-                    f"The 3 nearest USD Certified Smile Designers for pincode {pin} ({doc_names_hint}) have ALREADY been spoken to the patient.\n"
+                    f"The 3 nearest USD Authorised Smile Designers for pincode {pin} ({doc_names_hint}) have ALREADY been spoken to the patient.\n"
                     f"🚨 CRITICAL MANDATORY: DO NOT repeat or re-read the full 3 doctor names announcement again!\n"
                     f"Warmly ask the patient if they would like to consult with one of these doctors, or if they would prefer our clinic team to guide and assist them:\n"
                     f"• Gujarati: 'શું તમે આમાંથી કોઈ ડૉક્ટર સાથે કન્સલ્ટ કરવા માંગો છો, અથવા અમારી ટીમ તમને યોગ્ય નિષ્ણાત શોધવામાં માર્ગદર્શન આપે?'\n"
@@ -3152,10 +3152,10 @@ class ConversationManager:
                 next_step_instruction = (
                     f"PATIENT INQUIRY ABOUT DENTIST NAME (MANDATORY PROFESSIONAL GUIDANCE DIRECTIVE):\n"
                     f"The patient asked why the dentist/doctor name was not added.\n"
-                    f"Explain warmly and professionally in {user_lang} that when our team contacts them to confirm the appointment, they will guide them and at that time the patient can choose their preferred USD Certified Smile Designer, or our team will help match them with the right specialist!\n"
-                    f"• Gujarati: 'જ્યારે અમારી ટીમ તમારી અપૉઇન્ટમેન્ટ કન્ફર્મ કરવા માટે સંપર્ક કરશે, ત્યારે તેઓ તમને સંપૂર્ણ માર્ગદર્શન આપશે. તે સમયે તમે તમારા મનપસંદ USD સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર પસંદ કરી શકો છો, અથવા અમારી ટીમ તમારા માટે યોગ્ય નિષ્ણાત ડૉક્ટર સાથે કન્સલ્ટેશન નક્કી કરવામાં મદદ કરશે. શું હું આ વિગતો સાથે તમારી અપૉઇન્ટમેન્ટ સબમિટ કરું?'\n"
-                    f"• Hindi: 'जब हमारी टीम आपकी अपॉइंटमेंट कन्फर्म करने के लिए आपसे संपर्क करेगी, तो वे आपको पूरा मार्गदर्शन देंगे। उस समय आप अपने पसंदीदा USD सर्टिफाइड स्माइल डिज़ाइनर का चयन कर सकते हैं, या हमारी टीम आपके लिए सही विशेषज्ञ चुनने में आपकी मदद करेगी। क्या मैं यह अपॉइंटमेंट सबमिट कर दूँ?'\n"
-                    f"• English: 'When our team contacts you to confirm your appointment, they will guide you through the process. At that time, you can choose your preferred USD Certified Smile Designer, or our team will help match you with the right specialist for your consultation. Would you like to proceed and submit this appointment?'"
+                    f"Explain warmly and professionally in {user_lang} that when our team contacts them to confirm the appointment, they will guide them and at that time the patient can choose their preferred USD Authorised Smile Designer, or our team will help match them with the right specialist!\n"
+                    f"• Gujarati: 'જ્યારે અમારી ટીમ તમારી અપૉઇન્ટમેન્ટ કન્ફર્મ કરવા માટે સંપર્ક કરશે, ત્યારે તેઓ તમને સંપૂર્ણ માર્ગદર્શન આપશે. તે સમયે તમે તમારા મનપસંદ USD Authorised Smile Designer પસંદ કરી શકો છો, અથવા અમારી ટીમ તમારા માટે યોગ્ય નિષ્ણાત ડૉક્ટર સાથે કન્સલ્ટેશન નક્કી કરવામાં મદદ કરશે. શું હું આ વિગતો સાથે તમારી અપૉઇન્ટમેન્ટ સબમિટ કરું?'\n"
+                    f"• Hindi: 'जब हमारी टीम आपकी अपॉइंटमेंट कन्फर्म करने के लिए आपसे संपर्क करेगी, तो वे आपको पूरा मार्गदर्शन देंगे। उस समय आप अपने पसंदीदा USD Authorised Smile Designer का चयन कर सकते हैं, या हमारी टीम आपके लिए सही विशेषज्ञ चुनने में आपकी मदद करेगी। क्या मैं यह अपॉइंटमेंट सबमिट कर दूँ?'\n"
+                    f"• English: 'When our team contacts you to confirm your appointment, they will guide you through the process. At that time, you can choose your preferred USD Authorised Smile Designer, or our team will help match you with the right specialist for your consultation. Would you like to proceed and submit this appointment?'"
                 )
             else:
                 is_update = getattr(self.session, 'slot_just_updated', False)
@@ -3253,7 +3253,7 @@ class ConversationManager:
         has_fn = bool(slots.get("first_name") and slots["first_name"].strip() and slots["first_name"].lower() not in ["", "none", "null", "patient", "user"])
         has_city = bool(slots.get("city") and len(str(slots["city"]).strip()) >= 2 and str(slots["city"]).lower() not in ["", "none", "null", "india"])
         has_pincode = bool(slots.get("pincode") and len("".join(filter(str.isdigit, str(slots["pincode"])))) == 6)
-        has_doc = bool(slots.get("doctor_name") and slots["doctor_name"].strip() and slots["doctor_name"].lower() not in ["", "none", "null", "usd certified smile designer", "doctor", "dentist", "any", "not selected", "pending"])
+        has_doc = bool(slots.get("doctor_name") and slots["doctor_name"].strip() and slots["doctor_name"].lower() not in ["", "none", "null", "usd certified smile designer", "usd authorised smile designer", "usd authorized smile designer", "doctor", "dentist", "any", "not selected", "pending"])
         has_concern = bool(slots.get("message") and len(slots["message"].strip()) >= 3 and slots["message"].lower() not in ["none", "null", "dental consultation appointment request"])
         has_phone = bool(slots.get("phone") and len("".join(filter(str.isdigit, str(slots["phone"])))) == 10)
 
@@ -3772,9 +3772,9 @@ class ConversationManager:
                 else:
                     self.session.consultation_offered = True
                     gate_msgs = {
-                        "gu": f"હું સમજી શકું છું કે તમને {cn or 'દાંતની'} સમસ્યા છે, {display_name}. શું હું આના ઉકેલ માટે અમારા USD સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર સાથે કન્સલ્ટેશન અપૉઇન્ટમેન્ટ બુક કરવામાં મદદ કરું?",
-                        "hi": f"मैं समझ सकती हूँ कि आपको {cn or 'दाँतों की'} समस्या आ रही है, {display_name}। क्या मैं इसके समाधान के लिए हमारे USD सर्टिफाइड स्माइल डिज़ाइनर के साथ अपॉइंटमेंट बुक करने में आपकी मदद करूँ?",
-                        "en": f"I understand you are experiencing {cn or 'dental concern'}, {display_name}. Would you like me to help book a consultation appointment with our USD Certified Smile Designer for this?"
+                        "gu": f"હું સમજી શકું છું કે તમને {cn or 'દાંતની'} સમસ્યા છે, {display_name}. શું હું આના ઉકેલ માટે અમારા USD Authorised Smile Designer સાથે કન્સલ્ટેશન અપૉઇન્ટમેન્ટ બુક કરવામાં મદદ કરું?",
+                        "hi": f"मैं समझ सकती हूँ कि आपको {cn or 'दाँतों की'} समस्या आ रही है, {display_name}। क्या मैं इसके समाधान के लिए हमारे USD Authorised Smile Designer के साथ अपॉइंटमेंट बुक करने में आपकी मदद करूँ?",
+                        "en": f"I understand you are experiencing {cn or 'dental concern'}, {display_name}. Would you like me to help book a consultation appointment with our USD Authorised Smile Designer for this?"
                     }
                     full_text = gate_msgs.get(user_lang, gate_msgs["en"])
             elif not getattr(self.session, 'profession_asked', False):
@@ -3805,9 +3805,9 @@ class ConversationManager:
                 full_text = format_city_confirm_speech(p_pin, p_cit, user_lang)
             elif not pin:
                 pincode_msgs = {
-                    "gu": f"ખૂબ સરસ, {display_name}! તમારા સૌથી નજીકના USD સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર શોધવા માટે, તમારા વિસ્તારનો 6 અંકનો પિનકોડ શું છે?",
+                    "gu": f"ખૂબ સરસ, {display_name}! તમારા સૌથી નજીકના USD Authorised Smile Designer શોધવા માટે, તમારા વિસ્તારનો 6 અંકનો પિનકોડ શું છે?",
                     "hi": f"बहुत बढ़िया, {display_name}! आपके सबसे नजदीकी USD सर्टिफाइड સ્માઇલ ડિઝાઇનર ढूंढने के लिए, आपके क्षेत्र का 6 अंकों का पिनकोड क्या है?",
-                    "en": f"Great, {display_name}! To help find your nearest USD Certified Smile Designer, could you please tell me your 6-digit area pincode?"
+                    "en": f"Great, {display_name}! To help find your nearest USD Authorised Smile Designer, could you please tell me your 6-digit area pincode?"
                 }
                 full_text = pincode_msgs.get(user_lang, pincode_msgs["en"])
             elif not ct:
@@ -3819,9 +3819,9 @@ class ConversationManager:
                 full_text = city_msgs.get(user_lang, city_msgs["en"])
             elif not dr and (asking_field in ["doctor", "doctor_selection"] or getattr(self.session, 'recommended_dentists_spoken', False)):
                 doctor_msgs = {
-                    "gu": f"{ct or 'તમારા શહેર'}માં શું તમે કોઈ ચોક્કસ USD સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર પસંદ કરવા માંગો છો, કે પછી અમારી ટીમ માર્ગદર્શન આપે?",
-                    "hi": f"{ct or 'आपके शहर'} में क्या आप किसी विशेष USD सर्टिफाइड स्माइल डिज़ाइनर को चुनना चाहेंगे, या हमारी टीम मार्गदर्शन करे?",
-                    "en": f"Would you like to select a specific USD Certified Smile Designer in {ct or 'your city'}, or would you prefer our clinic team to guide you?"
+                    "gu": f"{ct or 'તમારા શહેર'}માં શું તમે કોઈ ચોક્કસ USD Authorised Smile Designer પસંદ કરવા માંગો છો, કે પછી અમારી ટીમ માર્ગદર્શન આપે?",
+                    "hi": f"{ct or 'आपके शहर'} में क्या आप किसी विशेष USD Authorised Smile Designer को चुनना चाहेंगे, या हमारी टीम मार्गदर्शन करे?",
+                    "en": f"Would you like to select a specific USD Authorised Smile Designer in {ct or 'your city'}, or would you prefer our clinic team to guide you?"
                 }
                 full_text = doctor_msgs.get(user_lang, doctor_msgs["en"])
             elif not ph:
@@ -4101,7 +4101,7 @@ class ConversationManager:
                     elif not self.session.user_concern:
                         active_mem_lines.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 1 done -> Step 2 (Dental Concern). Greet {self.session.user_name} by name and ask ONLY what specific dental concern or smile goal they have (do NOT ask them to confirm their name). YOU ARE STRICTLY FORBIDDEN from asking for City, Doctor, Pincode, or Phone!")
                     elif not getattr(self.session, "consultation_agreed", False) and not self.session.booking_slots.get("pincode"):
-                        active_mem_lines.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 2 confirmed -> Step 2.5 (Consultation Permission Gate). Acknowledge dental concern ({self.session.user_concern}), and ask ONLY: 'Would you like me to help book a consultation appointment with our USD Certified Smile Designer for this?'. YOU MUST WAIT FOR PATIENT TO SAY YES before asking for Pincode! DO NOT ask about profession or pincode in this turn!")
+                        active_mem_lines.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 2 confirmed -> Step 2.5 (Consultation Permission Gate). Acknowledge dental concern ({self.session.user_concern}), and ask ONLY: 'Would you like me to help book a consultation appointment with our USD Authorised Smile Designer for this?'. YOU MUST WAIT FOR PATIENT TO SAY YES before asking for Pincode! DO NOT ask about profession or pincode in this turn!")
                     elif not self.session.booking_slots.get("pincode"):
                         active_mem_lines.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 3 (Pincode FIRST). Ask ONLY for their 6-digit area pincode ('What is your 6-digit area pincode?'). YOU ARE STRICTLY FORBIDDEN from asking for city, doctor, or phone in this turn! DO NOT ask about profession!")
                     elif getattr(self.session, "city_confirm_needed", False) or not self.session.booking_slots.get("city"):

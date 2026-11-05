@@ -53,15 +53,15 @@ def detect_tag_from_text(input_text=""):
     if any(k in text for k in ["consultation", "schedule", "appointment", "book", "visit the clinic", "book a visit", "consult with dentist", "कंसल्टेशन", "अपॉइंटमेंट", "बुक", "परामर्श", "કન્સલ્ટેશન", "એપોઇન્ટમેન્ટ", "બુક"]) or ("consult" in text and "consultant" not in text and "consulting" not in text):
         return "[LINK_CONSULT]"
         
-    # 2. Immediately share LINK_DENTISTS if user talks about nearest / certified smile designers
+    # 2. Immediately share LINK_DENTISTS if user talks about nearest / authorised smile designers
     if any(k in text for k in [
-        "certified dentist", "certified dentists", "certified smile designer", "certified smile designers",
+        "authorised dentist", "authorized dentist", "certified dentist", "certified dentists", "authorised smile designer", "authorized smile designer", "certified smile designer", "certified smile designers",
         "certified designer", "certified designers", "smile designer", "smile designers",
         "nearest designer", "find dentist", "find a designer", "nearby dentist", "locate dentist",
         "dentist in", "dentists in", "designer in", "designers in", "clinic in", "clinics in",
         "dentist near", "dentists near", "clinic near", "clinics near",
         "how many dentist", "how many dentists", "how many designer", "how many designers",
-        "is certified", "are certified",
+        "is authorised", "is authorized", "is certified", "are certified",
         "सर्टिफाइड डेंटिस्ट", "नजदीकी डेंटिस्ट", "करीबी डेंटिस्ट", "डेंटिस्ट ढूंढ", "स्माइल डिज़ाइनर",
         "में डेंटिस्ट", "के डेंटिस्ट",
         "સર્ટિફાઇડ ડેન્ટિસ્ટ", "નજીકના ડેન્ટિસ્ટ", "ડેન્ટિસ્ટ શોધ", "સ્માઇલ ડિઝાઇનર",
@@ -82,7 +82,7 @@ def detect_tag_from_text(input_text=""):
         return "[LINK_VTRYON]"
     if any(k in text for k in ["contact", "reach out", "get in touch", "call us", "phone number", "संपर्क", "कॉल", "संपर्क करें", "સંપર્ક", "કૉલ", "સંપર્ક કરો"]):
         return "[LINK_CONTACT]"
-    if any(k in text for k in ["dentist connect", "become certified dentist", "collaborate", "partner", "join our network", "डेंटिस्ट连接", "सहयोग", "પાર્ટનર", "ડેન્ટિસ્ટ કનેક્ટ"]):
+    if any(k in text for k in ["dentist connect", "become authorised dentist", "become authorized dentist", "become certified dentist", "collaborate", "partner", "join our network", "डेंटिस्ट连接", "सहयोग", "પાર્ટનર", "ડેન્ટિસ્ટ કનેક્ટ"]):
         return "[LINK_CONNECT]"
     if any(k in text for k in ["gallery", "results", "before and after", "before/after", "गैलरी", "रिजल्ट", "ગેલેરી", "રિઝલ્ટ"]):
         return "[LINK_GALLERY]"

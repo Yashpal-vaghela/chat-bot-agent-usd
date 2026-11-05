@@ -66,7 +66,7 @@ MULTILINGUAL_CITY_MAP = {
     "kolkata": "Kolkata", "calcutta": "Kolkata", "कोलकाता": "Kolkata", "કોલકાતા": "Kolkata", "কলকাতা": "Kolkata"
 }
 
-ALL_CERTIFIED_DOCTORS_LIST = [
+ALL_AUTHORISED_DOCTORS_LIST = ALL_CERTIFIED_DOCTORS_LIST = [
     "Dr. Rakesh Patel", "Dr. Jigar P. Thakkar", "Dr. Ankit Mataliya", "Dr. Neerav Jhaveri", "Dr. Alap D Shah", "Dr. Abbas Noorani", "Dr. Purvesh Chauhan", "Dr. Ravi Shah", "Dr. Janu Shah",
     "Dr. Bharat R. Patel", "Dr. Parita Shah", "Dr. Viren K Savani", "Dr. Purvi Patel", "Dr. Priyanka Kathiriya", "Dr. Jay Patel",
     "Dr. Vinita Tekchandani", "Dr. Deepika Dalal", "Dr. Nikita Motwani", "Dr. Rohan Bandi", "Dr. Moez Khakiani",
@@ -311,6 +311,7 @@ def extract_slots_from_review_summary(text: str) -> dict:
 
             # Explicitly reject placeholder phrases and ceramist mentions
             placeholder_doc_phrases = [
+                "usd certified smile designer", "usd authorised smile designer", "usd authorized smile designer",
                 "हमारे डॉक्टर", "અમારા ડૉક્ટર", "our doctor", "doctor in", "ડોક્ટર છે", "डॉक्टर हैं",
                 "select doctor", "choose doctor", "કોઈ પણ", "कोई भी", "not selected", "pending",
                 "ceramist", "सिरामिस्ट", "સેરેમિસ્ટ", "haresh savani", "हरेश सवाणी", "હરેશ સવાણી",

@@ -3,12 +3,12 @@ One refinement I'd make after seeing your architecture: don't expose "LEVEL_1/LE
 (in hindi and any indian languge pronounce haresh savani like this : हरेश सवानी (हर + एशः, स + वाणी ))
 -------------------------
 
-Never confirm that a Certified Smile Designer exists in any city or country.
+Never confirm that a Authorised Smile Designer exists in any city or country.
 If the user asks about availability in any city or country:
 
 Do not guess.
 Do not confirm.
-Simply direct them to the Find a Certified Smile Designer page.
+Simply direct them to the Find a Authorised Smile Designer page.
 --------------------------
 
 intent: ultimate_smile_designing
@@ -122,7 +122,7 @@ That's a great question.
 
 Ultimate Smile Design was created by Master Ceramist **Haresh Savani** after years of seeing the inconsistencies in conventional smile makeovers. He realized that beautiful, natural smiles aren't created by technology or materials alone—they require a standardized, planning-first approach.
 
-We are not a clinic, a hospital, or just a dental lab. We are a premium smile transformation network. Our purpose is to connect patients with Certified Ultimate Smile Designers who follow our standardized digital planning protocols and use premium, USA FDA-cleared materials to deliver predictable, natural-looking results.
+We are not a clinic, a hospital, or just a dental lab. We are a premium smile transformation network. Our purpose is to connect patients with Authorised Ultimate Smile Designers who follow our standardized digital planning protocols and use premium, USA FDA-cleared materials to deliver predictable, natural-looking results.
 
 Ultimately, we bridge the gap between dental science and handcrafted artistry so you can get a smile that looks natural, feels comfortable, and lasts.
 
@@ -161,7 +161,7 @@ user_questions:
 - Do you provide an authentication card?
 - What is the USD Authentication Card?
 - How can I confirm my treatment is genuine?
-- How do I know my Certified Smile Designer is using your materials?
+- How do I know my Authorised Smile Designer is using your materials?
 - How do I know my treatment comes from ADE?
 - Will I receive any certificate?
 - Can I verify the products used in my treatment?
@@ -177,7 +177,7 @@ Every genuine Ultimate Smile Designing treatment is planned and completed using 
 
 To help you verify your restorations, your Authorised USD Smile Designer provides a USD Authentication Card. This card contains important information about your case and confirms that your smile was created using genuine USD-approved restorations crafted by Advance Dental Export.
 
-Whenever you visit your Certified Smile Designer, we encourage you to ask for your USD Authentication Card. It's your assurance that your treatment follows our quality standards and uses genuine USD products and craftsmanship.
+Whenever you visit your Authorised Smile Designer, we encourage you to ask for your USD Authentication Card. It's your assurance that your treatment follows our quality standards and uses genuine USD products and craftsmanship.
 
 Because confidence doesn't come from promises.
 
@@ -276,7 +276,7 @@ But a Mercedes delivers a premium experience, superior aesthetics, refined craft
 
 Smile designing is the same.
 
-A normal dentist and a USD Certified Dentist can perform the same treatment. The difference is that a USD Certified Dentist delivers a smile with a premium, aesthetic, and world-class standard of excellence—where every detail is designed to create a truly exceptional result.
+A normal dentist and a USD Authorised Dentist can perform the same treatment. The difference is that a USD Authorised Dentist delivers a smile with a premium, aesthetic, and world-class standard of excellence—where every detail is designed to create a truly exceptional result.
 
 /only when user tell my dentist have this 3d mockup, ai , cad cam and all so answer back with this/
  two chefs making biryani using the same ingredients. Both have access to similar ingredients, but the final taste depends on the chef's expertise and how every ingredient is balanced.
@@ -327,7 +327,7 @@ Would you like me to explain why the laboratory is just as important as the dent
 
 keywords:
 - authorised
-- certified dentist
+- authorised dentist
 - training
 - smile designer
 - certification
@@ -484,10 +484,10 @@ Please keep your expectations high, as Ultimate Smile Design provides bespoke, c
 The final investment and pricing depends on:
 
 * The location and city of the clinic.
-* The extensive experience, skill, and expertise of your USD Certified Smile Designer.
+* The extensive experience, skill, and expertise of your USD Authorised Smile Designer.
 * The complexity of your individual case, number of teeth/units involved, and bespoke ceramic handcrafting.
 
-The exact treatment plan and investment can only be determined during your personal smile assessment and consultation with your USD Certified Smile Designer.
+The exact treatment plan and investment can only be determined during your personal smile assessment and consultation with your USD Authorised Smile Designer.
 
 Then explain:
 Price depends on
@@ -495,7 +495,7 @@ Price depends on
 • number of units
 • material selected
 • city
-• experience of the Certified Smile Designer
+• experience of the Authorised Smile Designer
 • handcrafted laboratory work
 This becomes MUCH stronger.
 
@@ -531,7 +531,7 @@ voice_response:
 
 I'm glad you asked, because trust should always come before treatment.
 
-You can trust Ultimate Smile Design because every smile is personalized, digitally planned, and handcrafted using premium, USA FDA-cleared materials and standardized treatment protocols. Backed by the master ceramist of **Haresh Savani and his team**, and delivered through Certified Ultimate Smile Designers, our goal is to create a smile that looks natural, feels comfortable, and lasts for years.
+You can trust Ultimate Smile Design because every smile is personalized, digitally planned, and handcrafted using premium, USA FDA-cleared materials and standardized treatment protocols. Backed by the master ceramist of **Haresh Savani and his team**, and delivered through Authorised Ultimate Smile Designers, our goal is to create a smile that looks natural, feels comfortable, and lasts for years.
 
 Also, we are providing you with an authentication card for your assurance that you get a high-quality and premium product.
 
@@ -1722,7 +1722,7 @@ Warranty duration varies depending on the specific restoration and treatment pla
 3. Lifetime Warranty
 
 How to verify your warranty:
-You can easily check and verify your warranty on our official website by clicking "Verify Warranty" (or tap the 3-line menu icon on mobile). Simply enter the unique verification number from your USD Authentication Card provided by your USD Certified Smile Designer to view your complete restoration details, ADE laboratory certification, and active warranty status. Your USD Certified Smile Designer provides the official card and documentation upon treatment completion.
+You can easily check and verify your warranty on our official website by clicking "Verify Warranty" (or tap the 3-line menu icon on mobile). Simply enter the unique verification number from your USD Authentication Card provided by your USD Authorised Smile Designer to view your complete restoration details, ADE laboratory certification, and active warranty status. Your USD Authorised Smile Designer provides the official card and documentation upon treatment completion.
 
 follow_up:
 
@@ -1733,7 +1733,7 @@ keywords:
 - guarantee
 - authentication
 - authentic
-- certified
+- authorised
 - coverage
 
 intent: digital_planning
@@ -1841,7 +1841,7 @@ The difference isn't the ingredients. It's the expertise. A great chef knows exa
 
 Smile designing works the same way.
 
-A normal dentist and a USD Certified Smile Designer may both use digital smile design, smile preview technology, premium materials and modern equipment. The difference is how they balance every detail to create a smile that looks naturally beautiful.
+A normal dentist and a USD Authorised Smile Designer may both use digital smile design, smile preview technology, premium materials and modern equipment. The difference is how they balance every detail to create a smile that looks naturally beautiful.
 
 - Every smartphone can make phone calls, but premium devices are designed to deliver a smoother, more refined experience. Likewise, USD focuses on delivering a carefully planned smile journey, not just treatment.
 
@@ -1928,10 +1928,10 @@ If you want to choose your dentist, that is completely fine! But you should ask 
 3. Can they show you real live patient case results?
 4. Does your dentist provide 100% transparent pricing with no hidden charges?
 
-Ask your dentist, and if their answer is yes to all of these, then you should definitely go to your dentist! Because our USD Certified Smile Designers provide every single one of these standards.
+Ask your dentist, and if their answer is yes to all of these, then you should definitely go to your dentist! Because our USD Authorised Smile Designers provide every single one of these standards.
 
 follow_up:
-Would you like to learn more about our Certified Smile Designer protocol or our transparent pricing philosophy?
+Would you like to learn more about our Authorised Smile Designer protocol or our transparent pricing philosophy?
 
 keywords:
 - my dentist has the same
@@ -1963,7 +1963,7 @@ curious / challenging
 voice_response:
 Oh, nice! Your dentist may provide all of these things too, and that's completely fine.
 
-The main difference is that our USD Certified Smile Designers are specially trained in Smile Design. They complete the USD course and are trained in our specialised protocol.
+The main difference is that our USD Authorised Smile Designers are specially trained in Smile Design. They complete the USD course and are trained in our specialised protocol.
 
 follow_up:
 Would you like to know more about how our specialised Smile Design protocol works?
@@ -1999,7 +1999,7 @@ curious / analytical
 voice_response:
 Our transparent pricing is justified by four uncompromising pillars:
 
-1. Certified Smile Designer Protocol: Every smile follows a facial harmony philosophy and precision 3D architecture, not generic dental work.
+1. Authorised Smile Designer Protocol: Every smile follows a facial harmony philosophy and precision 3D architecture, not generic dental work.
 2. Master Ceramist Handcrafting: Each veneer is individually sculpted and shaded by master artists using premium e.max porcelain with natural translucency.
 3. Official Authentication & Documented Warranty: You receive a verified authentication card backed by our multi-year warranty.
 4. 100% All-Inclusive Transparency: No hidden lab charges, unexpected revision fees, or surprise chair-time costs. What we quote is your complete investment.
@@ -2059,7 +2059,7 @@ Our exclusivity is defined by six core principles:
 1. 100% predictable outcomes tailored to your facial symmetry.
 2. Unmatched expertise in the aesthetic dental field.
 3. We believe in explaining everything thoroughly before any treatment begins.
-4. We offer only premium, certified materials.
+4. We offer only premium, authorised materials.
 5. We provide complete surety with official authentication and warranty.
 6. Our treatment doesn't focus on one-time quick fixes; it focuses on lasting, long-term results.
 
@@ -2107,15 +2107,15 @@ keywords:
 
 --------------------------
 
-intent: find_certified_dentist_by_city
+intent: find_authorised_dentist_by_city
 
 user_questions:
-- Who is your certified dentist in Surat?
+- Who is your authorised dentist in Surat?
 - Do you have a smile designer in Mumbai?
 - Who is in Ahmedabad?
 - Dentist in Pune?
 - Do you have a doctor in Delhi?
-- Find a certified smile designer near me.
+- Find a authorised smile designer near me.
 - Which cities do you have dentists in?
 - Who are your doctors in Bangalore, Hyderabad, or Chennai?
 
@@ -2123,7 +2123,7 @@ emotion:
 seeking_guidance / curious
 
 voice_response:
-We have official USD Certified Smile Designers across major cities in India:
+We have official USD Authorised Smile Designers across major cities in India:
 
 • Ahmedabad: Dr. Rakesh Patel, Dr. Jigar P. Thakkar, Dr. Ankit Mataliya, Dr. Neerav Jhaveri, Dr. Alap D Shah, Dr. Abbas Noorani, Dr. Purvesh Chauhan, Dr. Ravi Shah, Dr. Janu Shah
 • Surat: Dr. Bharat R. Patel, Dr. Parita Shah, Dr. Viren K Savani, Dr. Purvi Patel, Dr. Priyanka Kathiriya, Dr. Jay Patel
@@ -2153,7 +2153,7 @@ follow_up:
 Which city is most convenient for your smile consultation?
 
 keywords:
-- certified dentist
+- authorised dentist
 - dentist in city
 - smile designer list
 - doctors near me
@@ -2181,7 +2181,7 @@ emotion:
 seeking_recommendation
 
 voice_response:
-If we do not currently have a USD Certified Smile Designer directly in your city, we guide you to our nearest certified city hub:
+If we do not currently have a USD Authorised Smile Designer directly in your city, we guide you to our nearest authorised city hub:
 
 • Nashik / Thane / Navi Mumbai -> Closest hub: Mumbai or Pune
 • Noida / Ghaziabad / Faridabad / Chandigarh -> Closest hub: New Delhi or Gurugram
@@ -2218,22 +2218,22 @@ user_questions:
 - Is Dr. Sharma part of USD?
 - Do you know Dr. ABC?
 - Can my dentist Dr. XYZ do USD veneers?
-- Is my local doctor certified by you?
+- Is my local doctor authorised by you?
 - Check if this doctor is in USD.
 
 emotion:
 curious / verifying
 
 voice_response:
-We do not have information on that dentist as they are not currently a USD Certified Smile Designer. We only maintain verified records and treatment protocols for our official USD Certified Smile Designers.
+We do not have information on that dentist as they are not currently a USD Authorised Smile Designer. We only maintain verified records and treatment protocols for our official USD Authorised Smile Designers.
 
 follow_up:
-Would you like to consult one of our official USD Certified Smile Designers?
+Would you like to consult one of our official USD Authorised Smile Designers?
 
 keywords:
 - non usd dentist
 - check doctor
-- is my doctor certified
+- is my doctor authorised
 - unknown dentist
 
 --------------------------
@@ -2242,7 +2242,7 @@ intent: dentist_join_usd_partnership
 
 user_questions:
 - How can my dentist join USD?
-- How can a dentist become a Certified Smile Designer?
+- How can a dentist become a Authorised Smile Designer?
 - I am a dentist, how do I join?
 - How do dentists register with Ultimate Smile Design?
 - Where is the dentist connect page?
@@ -2251,7 +2251,7 @@ emotion:
 interested / professional
 
 voice_response:
-Dentists who wish to become USD Certified Smile Designers can easily apply with us! On your screen, you can see the 'For Dentists' option. If you are on a mobile phone, tap the 3-line menu icon in the header, select 'For Dentists', and fill out your details. Our team will get in touch with you!
+Dentists who wish to become USD Authorised Smile Designers can easily apply with us! On your screen, you can see the 'For Dentists' option. If you are on a mobile phone, tap the 3-line menu icon in the header, select 'For Dentists', and fill out your details. Our team will get in touch with you!
 
 follow_up:
 [LINK_CONNECT]
@@ -2260,7 +2260,7 @@ keywords:
 - join usd
 - dentist connect
 - for dentists
-- become certified
+- become authorised
 - partner dentist
 - doctor registration
 
@@ -2347,7 +2347,7 @@ follow_up:
 Which city is most convenient for your smile consultation?
 
 keywords:
-- certified dentist
+- authorised dentist
 - dentist in city
 - smile designer list
 - doctors near me
@@ -2375,7 +2375,7 @@ emotion:
 seeking_recommendation
 
 voice_response:
-If we do not currently have a USD Certified Smile Designer directly in your city, we guide you to our nearest certified city hub:
+If we do not currently have a USD Authorised Smile Designer directly in your city, we guide you to our nearest authorised city hub:
 
 • Nashik / Thane / Navi Mumbai -> Closest hub: Mumbai or Pune
 • Noida / Ghaziabad / Faridabad / Chandigarh -> Closest hub: New Delhi or Gurugram
@@ -2412,22 +2412,22 @@ user_questions:
 - Is Dr. Sharma part of USD?
 - Do you know Dr. ABC?
 - Can my dentist Dr. XYZ do USD veneers?
-- Is my local doctor certified by you?
+- Is my local doctor authorised by you?
 - Check if this doctor is in USD.
 
 emotion:
 curious / verifying
 
 voice_response:
-We do not have information on that dentist as they are not currently a USD Certified Smile Designer. We only maintain verified records and treatment protocols for our official USD Certified Smile Designers.
+We do not have information on that dentist as they are not currently a USD Authorised Smile Designer. We only maintain verified records and treatment protocols for our official USD Authorised Smile Designers.
 
 follow_up:
-Would you like to consult one of our official USD Certified Smile Designers?
+Would you like to consult one of our official USD Authorised Smile Designers?
 
 keywords:
 - non usd dentist
 - check doctor
-- is my doctor certified
+- is my doctor authorised
 - unknown dentist
 
 --------------------------
@@ -2436,7 +2436,7 @@ intent: dentist_join_usd_partnership
 
 user_questions:
 - How can my dentist join USD?
-- How can a dentist become a Certified Smile Designer?
+- How can a dentist become a Authorised Smile Designer?
 - I am a dentist, how do I join?
 - How do dentists register with Ultimate Smile Design?
 - Where is the dentist connect page?
@@ -2445,7 +2445,7 @@ emotion:
 interested / professional
 
 voice_response:
-Dentists who wish to become USD Certified Smile Designers can easily apply with us! On your screen, you can see the 'For Dentists' option. If you are on a mobile phone, tap the 3-line menu icon in the header, select 'For Dentists', and fill out your details. Our team will get in touch with you!
+Dentists who wish to become USD Authorised Smile Designers can easily apply with us! On your screen, you can see the 'For Dentists' option. If you are on a mobile phone, tap the 3-line menu icon in the header, select 'For Dentists', and fill out your details. Our team will get in touch with you!
 
 follow_up:
 [LINK_CONNECT]
@@ -2454,7 +2454,7 @@ keywords:
 - join usd
 - dentist connect
 - for dentists
-- become certified
+- become authorised
 - partner dentist
 - doctor registration
 

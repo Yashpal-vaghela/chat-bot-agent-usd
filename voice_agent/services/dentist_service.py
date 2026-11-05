@@ -59,10 +59,10 @@ def fetch_dentists_by_pincode_sync(pincode: str) -> List[Dict]:
             home_c = DOCTOR_HOME_CITIES.get(doc_name, "")
             fallback_dentists.append({
                 "name": doc_name,
-                "clinic_name": f"{home_c} Smile Center" if home_c else "USD Certified Clinic",
+                "clinic_name": f"{home_c} Smile Center" if home_c else "USD Authorised Clinic",
                 "address": home_c or "India",
                 "pincode": clean_pin or "380001",
-                "bio": f"USD Certified Smile Designer in {home_c}" if home_c else "USD Certified Smile Designer"
+                "bio": f"USD Authorised Smile Designer in {home_c}" if home_c else "USD Authorised Smile Designer"
             })
         return fallback_dentists
     except Exception as e:
@@ -81,7 +81,7 @@ def get_nearest_dentists(pincode: str, offset: int = 0, limit: int = 3) -> Tuple
     Always returns up to `limit` dentists starting at `offset`.
     Ensures that if a patient's city has fewer than `limit` dentists (e.g. Vadodara has only 2:
     Dr. Khushbu Patel and Dr. Kaveena Parikh), the remaining dentists are fetched from the nearest
-    adjacent certified hub city (e.g. Ahmedabad along the arrival route from patient's pincode).
+    adjacent authorised hub city (e.g. Ahmedabad along the arrival route from patient's pincode).
     """
     clean_pin = re.sub(r"\D", "", str(pincode or "")).strip()
     all_dentists = fetch_dentists_by_pincode_sync(pincode)
@@ -101,7 +101,7 @@ def get_nearest_dentists(pincode: str, offset: int = 0, limit: int = 3) -> Tuple
             pass
 
     if is_vadodara:
-        # Vadodara has 2 certified dentists: Dr. Khushbu Patel and Dr. Kaveena Parikh
+        # Vadodara has 2 authorised dentists: Dr. Khushbu Patel and Dr. Kaveena Parikh
         # Order them by proximity to the specific Vadodara pincode
         vad_docs = [d for d in all_dentists if get_doctor_city(d) == "Vadodara"]
         known_vad_names = [d.get("name") for d in vad_docs]
@@ -112,7 +112,7 @@ def get_nearest_dentists(pincode: str, offset: int = 0, limit: int = 3) -> Tuple
                 "address": "114-D, Ananta Trendz, Gotri - Laxmipura Rd, near Narayan Garden Road, Laxmipura, Gotri, Vadodara, Gujarat 390023",
                 "pincode": "390023",
                 "city": "Vadodara",
-                "bio": "USD Certified Smile Designer in Vadodara"
+                "bio": "USD Authorised Smile Designer in Vadodara"
             })
         if "Dr. Kaveena Parikh" not in known_vad_names:
             vad_docs.append({
@@ -121,7 +121,7 @@ def get_nearest_dentists(pincode: str, offset: int = 0, limit: int = 3) -> Tuple
                 "address": "Aasopalav one west, 220, Sevasi, Vadodara, Gujarat 391101",
                 "pincode": "391101",
                 "city": "Vadodara",
-                "bio": "USD Certified Smile Designer in Vadodara"
+                "bio": "USD Authorised Smile Designer in Vadodara"
             })
 
         # 3rd doctor MUST be fetched from the nearest city which is Ahmedabad,
@@ -136,7 +136,7 @@ def get_nearest_dentists(pincode: str, offset: int = 0, limit: int = 3) -> Tuple
                     "address": "2nd Floor, Silver harmony 2, 233-A, opp. ICB FLORA, Gota, Ahmedabad, Gujarat 382481",
                     "pincode": "382481",
                     "city": "Ahmedabad",
-                    "bio": "USD Certified Smile Designer in Ahmedabad"
+                    "bio": "USD Authorised Smile Designer in Ahmedabad"
                 },
                 {
                     "name": "Dr. Rakesh Patel",
@@ -144,7 +144,7 @@ def get_nearest_dentists(pincode: str, offset: int = 0, limit: int = 3) -> Tuple
                     "address": "1, VAIBHAV PARK, nr. Uma School Road, Nikol - Naroda Rd, Ahmedabad, Gujarat 382350",
                     "pincode": "382350",
                     "city": "Ahmedabad",
-                    "bio": "USD Certified Smile Designer in Ahmedabad"
+                    "bio": "USD Authorised Smile Designer in Ahmedabad"
                 }
             ]
 
@@ -181,10 +181,10 @@ def format_dentist_recommendation_prompt(dentists: List[Dict], pincode: str, off
     if not dentists:
         return f"- Pincode {pincode}: No specific dentists fetched yet."
 
-    lines = [f"[NEAREST USD CERTIFIED SMILE DESIGNERS FOR PINCODE {pincode} (Batch starting at #{offset + 1})]:"]
+    lines = [f"[NEAREST USD AUTHORISED SMILE DESIGNERS FOR PINCODE {pincode} (Batch starting at #{offset + 1})]:"]
     for i, d in enumerate(dentists, start=offset + 1):
         name = d.get("name", "Dr. USD Specialist")
-        clinic = d.get("clinic_name", "USD Certified Smile Center")
+        clinic = d.get("clinic_name", "USD Authorised Smile Center")
         pin = d.get("pincode", "")
         doc_c = get_doctor_city(d) or d.get("city", "")
         city_info = f", Clinic City: {doc_c}" if doc_c else ""
@@ -215,7 +215,7 @@ def infer_city_from_dentists(dentists: List[Dict]) -> Optional[str]:
 
 def get_doctor_city(doctor_dict_or_name: any) -> str:
     """
-    Returns the home/clinic city of the certified doctor.
+    Returns the home/clinic city of the authorised doctor.
     Checks DOCTOR_HOME_CITIES first, then falls back to clinic address.
     """
     try:
@@ -285,21 +285,21 @@ def format_dentists_speech_text(
             if lk_pref == "gu":
                 prefix = f"તમારા અપડેટ કરેલા પિનકોડ {pincode} મુજબ" if is_update else f"તમારા પિનકોડ {pincode} મુજબ"
                 return (
-                    f"{prefix}, {u_c_disp}માં અમારા સૌથી નજીકના USD સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર્સ છે {doc1} અને {doc2}, "
+                    f"{prefix}, {u_c_disp}માં અમારા સૌથી નજીકના USD Authorised Smile Designers છે {doc1} અને {doc2}, "
                     f"તેમજ નજીકના {other_c}માં {doc3}. "
                     f"શું તમે આમાંથી કોઈ ડૉક્ટર પસંદ કરવા માંગો છો, કે પછી અમારી ટીમ માર્ગદર્શન આપે?"
                 )
             elif lk_pref == "hi":
                 prefix = f"आपके अपडेट किए गए पिनकोड {pincode} के अनुसार" if is_update else f"आपके पिनकोड {pincode} के अनुसार"
                 return (
-                    f"{prefix}, {u_c_disp} में हमारे सबसे नजदीकी USD सर्टिफाइड स्માઈલ डिज़ाइनर हैं {doc1} और {doc2}, "
+                    f"{prefix}, {u_c_disp} में हमारे सबसे नजदीकी USD Authorised Smile Designer हैं {doc1} और {doc2}, "
                     f"तथा नजदीकी {other_c} में {doc3}। "
                     f"क्या आप इनमें से किसी डॉक्टर का चयन करना चाहेंगे, या हमारी टीम मार्गदर्शन करे?"
                 )
             else:
                 prefix = f"Based on your updated pincode {pincode}" if is_update else f"Based on your pincode {pincode}"
                 return (
-                    f"{prefix}, our nearest USD Certified Smile Designers in {u_c_disp} are {doc1} and {doc2}, "
+                    f"{prefix}, our nearest USD Authorised Smile Designers in {u_c_disp} are {doc1} and {doc2}, "
                     f"and in nearby {other_c} is {doc3}. "
                     f"Would you like to select one of these doctors, or should our team guide you?"
                 )
@@ -351,11 +351,11 @@ def format_dentists_speech_text(
             )
         prefix = f"તમારા અપડેટ કરેલા પિનકોડ {pincode} મુજબ" if is_update else f"તમારા પિનકોડ {pincode} મુજબ"
         if include_cities and single_nearby_city:
-            near_phrase = f"નજીકના {single_nearby_city}માં અમારા સૌથી નજીકના USD સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર્સ છે"
+            near_phrase = f"નજીકના {single_nearby_city}માં અમારા સૌથી નજીકના USD Authorised Smile Designers છે"
         elif include_cities:
-            near_phrase = "નજીકના શહેરોમાં તમારા સૌથી નજીકના USD સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર્સ છે"
+            near_phrase = "નજીકના શહેરોમાં તમારા સૌથી નજીકના USD Authorised Smile Designers છે"
         else:
-            near_phrase = "તમારા સૌથી નજીકના 3 USD સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર્સ છે"
+            near_phrase = "તમારા સૌથી નજીકના 3 USD Authorised Smile Designers છે"
         return (
             f"{prefix}, {near_phrase}: {names_str_gu}. "
             f"શું તમે આમાંથી કોઈ ડૉક્ટર સાથે કન્સલ્ટ કરવા માંગો છો, અથવા બીજા વિકલ્પો સાંભળવા માંગો છો?"
@@ -369,11 +369,11 @@ def format_dentists_speech_text(
             )
         prefix = f"आपके अपडेट किए गए पिनकोड {pincode} के अनुसार" if is_update else f"आपके पिनकोड {pincode} के अनुसार"
         if include_cities and single_nearby_city:
-            near_phrase = f"नजदीकी {single_nearby_city} में हमारे 3 सबसे नजदीकी USD सर्टिफाइड स्माइल डिज़ाइनर हैं"
+            near_phrase = f"नजदीकी {single_nearby_city} में हमारे 3 सबसे नजदीकी USD Authorised Smile Designer हैं"
         elif include_cities:
-            near_phrase = "निकटवर्ती शहरों में आपके सबसे नजदीकी USD सर्टिफाइड स्माइल डिज़ाइनर हैं"
+            near_phrase = "निकटवर्ती शहरों में आपके सबसे नजदीकी USD Authorised Smile Designer हैं"
         else:
-            near_phrase = "आपके निकटतम 3 USD सर्टिफाइड स्माइल डिज़ाइनर हैं"
+            near_phrase = "आपके निकटतम 3 USD Authorised Smile Designer हैं"
         return (
             f"{prefix}, {near_phrase}: {names_str_hi}। "
             f"क्या आप इनमें से किसी डॉक्टर से कंसल्ट करना चाहेंगे, या अन्य विकल्प देखना चाहेंगे?"
@@ -382,16 +382,16 @@ def format_dentists_speech_text(
     if lk == "mr":
         if is_more:
             return (
-                f"तुमच्या परिसरातील पुढील उपलब्ध USD प्रमाणित स्माइल डिझायनर्स आहेत: {names_str_en}. "
+                f"तुमच्या परिसरातील पुढील उपलब्ध USD Authorised Smile Designers आहेत: {names_str_en}. "
                 f"तुम्ही यापैकी एकाची निवड करू इच्छिता, किंवा इतर पर्याय पाहू इच्छिता?"
             )
         prefix = f"तुमच्या अपडेट केलेल्या पिनकोड {pincode} नुसार" if is_update else f"तुमच्या पिनकोड {pincode} नुसार"
         if include_cities and single_nearby_city:
-            near_phrase = f"जवळच्या {single_nearby_city} मधील आमचे 3 सर्वात जवळचे USD प्रमाणित स्माइल डिझायनर्स आहेत"
+            near_phrase = f"जवळच्या {single_nearby_city} मधील आमचे 3 सर्वात जवळचे USD Authorised Smile Designers आहेत"
         elif include_cities:
-            near_phrase = "जवळच्या शहरांमधील आमचे USD प्रमाणित स्माइल डिझायनर्स आहेत"
+            near_phrase = "जवळच्या शहरांमधील आमचे USD Authorised Smile Designers आहेत"
         else:
-            near_phrase = "आमचे 3 सर्वात जवळचे USD प्रमाणित स्माइल डिझायनर्स आहेत"
+            near_phrase = "आमचे 3 सर्वात जवळचे USD Authorised Smile Designers आहेत"
         return (
             f"{prefix}, {near_phrase}: {names_str_en}। "
             f"तुम्ही यापैकी कोणत्याही डॉक्टरांची निवड करू इच्छिता, किंवा इतर पर्याय पाहू इच्छिता?"
@@ -400,16 +400,16 @@ def format_dentists_speech_text(
     if lk == "bn":
         if is_more:
             return (
-                f"আপনার এলাকার নিকটবর্তী পরবর্তী উপলব্ধ USD সার্টিফাইড স্মাইল ডিজাইনার হলেন: {names_str_en}। "
+                f"আপনার এলাকার নিকটবর্তী পরবর্তী উপলব্ধ USD Authorised Smile Designer হলেন: {names_str_en}। "
                 f"আপনি কি এদের মধ্যে কাউকে নির্বাচন করতে চান, নাকি আরও বিকল্প দেখতে চান?"
             )
         prefix = f"আপনার আপডেট করা পিনকোড {pincode} অনুসারে" if is_update else f"আপনার পিনকোড {pincode} অনুসারে"
         if include_cities and single_nearby_city:
-            near_phrase = f"কাছের {single_nearby_city} তে আমাদের ৩ জন নিকটতম USD সার্টিফাইড স্মাইল ডিজাইনার হলেন"
+            near_phrase = f"কাছের {single_nearby_city} তে আমাদের ৩ জন নিকটতম USD Authorised Smile Designer হলেন"
         elif include_cities:
-            near_phrase = "নিকটবর্তী শহরে অবস্থিত আমাদের USD সার্টিফাইড স্মাইল ডিজাইনার হলেন"
+            near_phrase = "নিকটবর্তী শহরে অবস্থিত আমাদের USD Authorised Smile Designer হলেন"
         else:
-            near_phrase = "আমাদের ৩ জন নিকটতম USD সার্টিফাইড স্মাইল ডিজাইনার হলেন"
+            near_phrase = "আমাদের ৩ জন নিকটতম USD Authorised Smile Designer হলেন"
         return (
             f"{prefix}, {near_phrase}: {names_str_en}। "
             f"আপনি কি এই ডাক্তারদের মধ্যে কাউকে নির্বাচন করতে চান, নাকি অন্য বিকল্প দেখতে চান?"
@@ -418,16 +418,16 @@ def format_dentists_speech_text(
     if lk == "ta":
         if is_more:
             return (
-                f"உங்கள் பகுதிக்கு அருகிலுள்ள அடுத்த USD சான்றளிக்கப்பட்ட ஸ்மைல் டிசைனர்கள்: {names_str_en}. "
+                f"உங்கள் பகுதிக்கு அருகிலுள்ள அடுத்த USD Authorised Smile Designers: {names_str_en}. "
                 f"இவர்களில் ஒருவரைத் தேர்ந்தெடுக்க விரும்புகிறீர்களா, அல்லது பிற விருப்பங்களைப் பார்க்க விரும்புகிறீர்களா?"
             )
         prefix = f"உங்கள் புதுப்பிக்கப்பட்ட பின்கோட் {pincode} படி" if is_update else f"உங்கள் பின்கோட் {pincode} படி"
         if include_cities and single_nearby_city:
-            near_phrase = f"அருகிலுள்ள {single_nearby_city} யில் உள்ள எங்கள் 3 அருகிலுள்ள USD சான்றளிக்கப்பட்ட ஸ்மைல் டிசைனர்கள்"
+            near_phrase = f"அருகிலுள்ள {single_nearby_city} யில் உள்ள எங்கள் 3 அருகிலுள்ள USD Authorised Smile Designers"
         elif include_cities:
-            near_phrase = "அருகிலுள்ள நகரங்களில் உள்ள எங்கள் USD சான்றளிக்கப்பட்ட ஸ்மைல் டிசைனர்கள்"
+            near_phrase = "அருகிலுள்ள நகரங்களில் உள்ள எங்கள் USD Authorised Smile Designers"
         else:
-            near_phrase = "எங்கள் 3 அருகிலுள்ள USD சான்றளிக்கப்பட்ட ஸ்மைல் டிசைனர்கள்"
+            near_phrase = "எங்கள் 3 அருகிலுள்ள USD Authorised Smile Designers"
         return (
             f"{prefix}, {near_phrase}: {names_str_en}. "
             f"இவர்களில் ஒரு மருத்துவரைத் தேர்ந்தெடுக்க விரும்புகிறீர்களா, அல்லது பிற விருப்பங்களைப் பார்க்க விரும்புகிறீர்களா?"
@@ -436,16 +436,16 @@ def format_dentists_speech_text(
     if lk == "te":
         if is_more:
             return (
-                f"మీ ప్రాంత సమీపంలో అందుబాటులో ఉన్న తదుపరి USD సర్టిఫైడ్ స్మైల్ డిజైనర్లు: {names_str_en}. "
+                f"మీ ప్రాంత సమీపంలో అందుబాటులో ఉన్న తదుపరి USD Authorised Smile Designers: {names_str_en}. "
                 f"మీరు వీరిలో ఒకరిని ఎంచుకోవాలనుకుంటున్నారా, లేదా మరిన్ని ఎంపికలు చూడాలనుకుంటున్నారా?"
             )
         prefix = f"మీ అప్‌డేట్ చేసిన పిన్‌కోడ్ {pincode} ప్రకారం" if is_update else f"మీ పిన్‌కోడ్ {pincode} ప్రకారం"
         if include_cities and single_nearby_city:
-            near_phrase = f"సమీపంలోని {single_nearby_city} లో మా 3 సమీప USD సర్టిఫైడ్ స్మైల్ డిజైనర్లు"
+            near_phrase = f"సమీపంలోని {single_nearby_city} లో మా 3 సమీప USD Authorised Smile Designers"
         elif include_cities:
-            near_phrase = "సమీప నగరాల్లోని మా USD సర్టిఫైడ్ స్మైల్ డిజైనర్లు"
+            near_phrase = "సమీప నగరాల్లోని మా USD Authorised Smile Designers"
         else:
-            near_phrase = "మా 3 సమీప USD సర్టిఫైడ్ స్మైల్ డిజైనర్లు"
+            near_phrase = "మా 3 సమీప USD Authorised Smile Designers"
         return (
             f"{prefix}, {near_phrase}: {names_str_en}. "
             f"మీరు వీరిలో ఒకరిని ఎంచుకోవాలనుకుంటున్నారా, లేదా ఇతర ఎంపికలను చూడాలనుకుంటున్నారా?"
@@ -454,16 +454,16 @@ def format_dentists_speech_text(
     if lk == "kn":
         if is_more:
             return (
-                f"ನಿಮ್ಮ ಪ್ರದೇಶದ ಹತ್ತಿರ ಲಭ್ಯವಿರುವ ಮುಂದಿನ USD ಪ್ರಮಾಣೀಕೃತ ಸ್ಮೈಲ್ ಡಿಸೈನರ್‌ಗಳು: {names_str_en}. "
+                f"ನಿಮ್ಮ ಪ್ರದೇಶದ ಹತ್ತಿರ ಲಭ್ಯವಿರುವ ಮುಂದಿನ USD Authorised Smile Designers: {names_str_en}. "
                 f"ನೀವು ಇವರಲ್ಲಿ ಒಬ್ಬರನ್ನು ಆಯ್ಕೆ ಮಾಡಲು ಬಯಸುತ್ತೀರಾ, ಅಥವಾ ಹೆಚ್ಚಿನ ಆಯ್ಕೆಗಳನ್ನು ನೋಡಲು ಬಯಸುತ್ತೀರಾ?"
             )
         prefix = f"ನಿಮ್ಮ ನವೀಕರಿಸಿದ ಪಿನ್‌ಕೋಡ್ {pincode} ಪ್ರಕಾರ" if is_update else f"ನಿಮ್ಮ ಪಿನ್‌ಕೋಡ್ {pincode} ಪ್ರಕಾರ"
         if include_cities and single_nearby_city:
-            near_phrase = f"ಹತ್ತಿರದ {single_nearby_city} ನಲ್ಲಿ ನಮ್ಮ 3 ಹತ್ತಿರದ USD ಪ್ರಮಾಣೀಕೃತ ಸ್ಮೈಲ್ ಡಿಸೈನರ್‌ಗಳು"
+            near_phrase = f"ಹತ್ತಿರದ {single_nearby_city} ನಲ್ಲಿ ನಮ್ಮ 3 ಹತ್ತಿರದ USD Authorised Smile Designers"
         elif include_cities:
-            near_phrase = "ಹತ್ತಿರದ ನಗರಗಳಲ್ಲಿರುವ ನಮ್ಮ USD ಪ್ರಮಾಣೀಕೃತ ಸ್ಮೈಲ್ ಡಿಸೈನರ್‌ಗಳು"
+            near_phrase = "ಹತ್ತಿರದ ನಗರಗಳಲ್ಲಿರುವ ನಮ್ಮ USD Authorised Smile Designers"
         else:
-            near_phrase = "ನಮ್ಮ 3 ಹತ್ತಿರದ USD ಪ್ರಮಾಣೀಕೃತ ಸ್ಮೈಲ್ ಡಿಸೈನರ್‌ಗಳು"
+            near_phrase = "ನಮ್ಮ 3 ಹತ್ತಿರದ USD Authorised Smile Designers"
         return (
             f"{prefix}, {near_phrase}: {names_str_en}. "
             f"ನೀವು ಇವರಲ್ಲಿ ಒಬ್ಬರನ್ನು ಆಯ್ಕೆ ಮಾಡಲು ಬಯಸುತ್ತೀರಾ, ಅಥವಾ ಇತರ ಆಯ್ಕೆಗಳನ್ನು ನೋಡಲು ಬಯಸುತ್ತೀರಾ?"
@@ -472,16 +472,16 @@ def format_dentists_speech_text(
     if lk == "ml":
         if is_more:
             return (
-                f"നിങ്ങളുടെ പ്രദേശത്തിന് അടുത്തുള്ള അടുത്ത ലഭ്യമായ USD സർട്ടിഫൈഡ് സ്മൈൽ ഡിസൈനർമാർ: {names_str_en}. "
+                f"നിങ്ങളുടെ പ്രദേശത്തിന് അടുത്തുള്ള അടുത്ത ലഭ്യമായ USD Authorised Smile Designers: {names_str_en}. "
                 f"ഇവരിൽ ഒരാളെ തിരഞ്ഞെടുക്കാൻ ആഗ്രഹിക്കുന്നുണ്ടോ, അതോ കൂടുതൽ ഓപ്ഷനുകൾ കാണാൻ ആഗ്രഹിക്കുന്നുണ്ടോ?"
             )
         prefix = f"നിങ്ങളുടെ അപ്ഡേറ്റ് ചെയ്ത പിൻകോഡ് {pincode} അനുസരിച്ച്" if is_update else f"നിങ്ങളുടെ പിൻകോഡ് {pincode} അനുസരിച്ച്"
         if include_cities and single_nearby_city:
-            near_phrase = f"അടുത്തുള്ള {single_nearby_city} യിൽ ഞങ്ങളുടെ ഏറ്റവും അടുത്തുള്ള 3 USD സർട്ടിഫൈഡ് സ്മൈൽ ഡിസൈനർമാർ"
+            near_phrase = f"അടുത്തുള്ള {single_nearby_city} യിൽ ഞങ്ങളുടെ ഏറ്റവും അടുത്തുള്ള 3 USD Authorised Smile Designers"
         elif include_cities:
-            near_phrase = "സമീപ നഗരങ്ങളിലുള്ള ഞങ്ങളുടെ USD സർട്ടിഫൈഡ് സ്മൈൽ ഡിസൈനർമാർ"
+            near_phrase = "സമീപ നഗരങ്ങളിലുള്ള ഞങ്ങളുടെ USD Authorised Smile Designers"
         else:
-            near_phrase = "ഞങ്ങളുടെ ഏറ്റവും അടുത്തുള്ള 3 USD സർട്ടിഫൈഡ് സ്മൈൽ ഡിസൈനർമാർ"
+            near_phrase = "ഞങ്ങളുടെ ഏറ്റവും അടുത്തുള്ള 3 USD Authorised Smile Designers"
         return (
             f"{prefix}, {near_phrase}: {names_str_en}. "
             f"ഇവരിൽ ഒരാളെ തിരഞ്ഞെടുക്കാൻ ആഗ്രഹിക്കുന്നുണ്ടോ, അതോ മറ്റ് ഓപ്ഷനുകൾ കാണാൻ ആഗ്രഹിക്കുന്നുണ്ടോ?"
@@ -490,16 +490,16 @@ def format_dentists_speech_text(
     if lk == "pa":
         if is_more:
             return (
-                f"ਤੁਹਾਡੇ ਇਲਾਕੇ ਦੇ ਨੇੜੇ ਅਗਲੇ ਉਪਲਬਧ USD ਪ੍ਰਮਾਣਿਤ ਸਮਾਈਲ ਡਿਜ਼ਾਈਨਰ ਹਨ: {names_str_en}. "
+                f"ਤੁਹਾਡੇ ਇਲਾਕੇ ਦੇ ਨੇੜੇ ਅਗਲੇ ਉਪਲਬਧ USD Authorised Smile Designer ਹਨ: {names_str_en}. "
                 f"ਕੀ ਤੁਸੀਂ ਇਹਨਾਂ ਵਿੱਚੋਂ ਕਿਸੇ ਇੱਕ ਨੂੰ ਚੁਣਨਾ ਚਾਹੋਗੇ, ਜਾਂ ਹੋਰ ਵਿਕਲਪ ਦੇਖਣਾ ਚਾਹੋਗੇ?"
             )
         prefix = f"ਤੁਹਾਡੇ ਅਪਡੇਟ ਕੀਤੇ ਪਿਨਕੋਡ {pincode} ਅਨੁਸਾਰ" if is_update else f"ਤੁਹਾਡੇ ਪਿਨਕੋਡ {pincode} ਅਨੁਸਾਰ"
         if include_cities and single_nearby_city:
-            near_phrase = f"ਨੇੜਲੇ {single_nearby_city} ਵਿੱਚ ਸਾਡੇ 3 ਸਭ ਤੋਂ ਨੇੜਲੇ USD ਪ੍ਰਮਾਣਿਤ ਸਮਾਈਲ ਡਿਜ਼ਾਈਨਰ ਹਨ"
+            near_phrase = f"ਨੇੜਲੇ {single_nearby_city} ਵਿੱਚ ਸਾਡੇ 3 ਸਭ ਤੋਂ ਨੇੜਲੇ USD Authorised Smile Designer ਹਨ"
         elif include_cities:
-            near_phrase = "ਨੇੜਲੇ ਸ਼ਹਿਰਾਂ ਵਿੱਚ ਸਾਡੇ USD ਪ੍ਰਮਾਣਿਤ ਸਮਾਈਲ ਡਿਜ਼ਾਈਨਰ ਹਨ"
+            near_phrase = "ਨੇੜਲੇ ਸ਼ਹਿਰਾਂ ਵਿੱਚ ਸਾਡੇ USD Authorised Smile Designer ਹਨ"
         else:
-            near_phrase = "ਸਾਡੇ 3 ਸਭ ਤੋਂ ਨੇੜਲੇ USD ਪ੍ਰਮਾਣਿਤ ਸਮਾਈਲ ਡਿਜ਼ਾਈਨਰ ਹਨ"
+            near_phrase = "ਸਾਡੇ 3 ਸਭ ਤੋਂ ਨੇੜਲੇ USD Authorised Smile Designer ਹਨ"
         return (
             f"{prefix}, {near_phrase}: {names_str_en}. "
             f"ਕੀ ਤੁਸੀਂ ਇਹਨਾਂ ਵਿੱਚੋਂ ਕਿਸੇ ਡਾਕਟਰ ਦੀ ਚੋਣ ਕਰਨਾ ਚਾਹੋਗੇ, ਜਾਂ ਹੋਰ ਵਿਕਲਪ ਦੇਖਣਾ ਚਾਹੋਗੇ?"
@@ -508,16 +508,16 @@ def format_dentists_speech_text(
     if lk == "or":
         if is_more:
             return (
-                f"ଆପଣଙ୍କ ଅଞ୍ଚଳ ନିକଟରେ ଉପଲବ୍ଧ ପରବର୍ତ୍ତୀ USD ସାର୍ଟିଫାଏଡ୍ ସ୍ମାଇଲ୍ ଡିଜାଇନର୍ ହେଲେ: {names_str_en}। "
+                f"ଆପଣଙ୍କ ଅଞ୍ଚଳ ନିକଟରେ ଉପଲବ୍ଧ ପରବର୍ତ୍ତୀ USD Authorised Smile Designer ହେଲେ: {names_str_en}। "
                 f"ଆପଣ ଏମାନଙ୍କ ମଧ୍ୟରୁ କାହାକୁ ଚୟନ କରିବାକୁ ଚାହାଁନ୍ତି କି, କିମ୍ବା ଅଧିକ ବିକଳ୍ପ ଦେଖିବାକୁ ଚାହାଁନ୍ତି?"
             )
         prefix = f"ଆପଣଙ୍କର ଅପଡେଟ୍ ହୋଇଥିବା ପିନକୋଡ୍ {pincode} ଅନୁଯାୟୀ" if is_update else f"ଆପଣଙ୍କର ପିନକୋଡ୍ {pincode} ଅନୁଯାୟୀ"
         if include_cities and single_nearby_city:
-            near_phrase = f"ନିକଟସ୍ଥ {single_nearby_city} ରେ ଆମର ୩ ଜଣ ନିକଟତମ USD ସାର୍ଟିଫାଏଡ୍ ସ୍ମାଇଲ୍ ଡିଜାଇନର୍ ହେଲେ"
+            near_phrase = f"ନିକଟସ୍ଥ {single_nearby_city} ରେ ଆମର ୩ ଜଣ ନିକଟତମ USD Authorised Smile Designer ହେଲେ"
         elif include_cities:
-            near_phrase = "ନିକଟବର୍ତ୍ତୀ ସହରରେ ଆମର USD ସାର୍ଟିଫାଏଡ୍ ସ୍ମାଇଲ୍ ଡିଜାଇନର୍ ହେଲେ"
+            near_phrase = "ନିକଟବର୍ତ୍ତୀ ସହରରେ ଆମର USD Authorised Smile Designer ହେଲେ"
         else:
-            near_phrase = "ଆମର ୩ ଜଣ ନିକଟତମ USD ସାର୍ଟିଫାଏଡ୍ ସ୍ମାଇଲ୍ ଡିଜାଇନର୍ ହେଲେ"
+            near_phrase = "ଆମର ୩ ଜଣ ନିକଟତମ USD Authorised Smile Designer ହେଲେ"
         return (
             f"{prefix}, {near_phrase}: {names_str_en}। "
             f"ଆପଣ ଏମାନଙ୍କ ମଧ୍ୟରୁ କାହାକୁ ଚୟନ କରିବାକୁ ଚାହାଁନ୍ତି କି, କିମ୍ବା ଅନ୍ୟ ବିକଳ୍ପ ଦେଖିବାକୁ ଚାହାଁନ୍ତି?"
@@ -526,16 +526,16 @@ def format_dentists_speech_text(
     # English / default
     if is_more:
         return (
-            f"Here are the next available USD Certified Smile Designers near your area: {names_str_en}. "
+            f"Here are the next available USD Authorised Smile Designers near your area: {names_str_en}. "
             f"Would you like to select one of these doctors, or would you like to hear more options?"
         )
     prefix = f"Based on your updated pincode {pincode}" if is_update else f"Based on your pincode {pincode}"
     if include_cities and single_nearby_city:
-        near_phrase = f"our 3 nearest USD Certified Smile Designers nearby in {single_nearby_city} are"
+        near_phrase = f"our 3 nearest USD Authorised Smile Designers nearby in {single_nearby_city} are"
     elif include_cities:
-        near_phrase = "your nearest USD Certified Smile Designers are located in nearby cities"
+        near_phrase = "your nearest USD Authorised Smile Designers are located in nearby cities"
     else:
-        near_phrase = "your 3 nearest USD Certified Smile Designers are"
+        near_phrase = "your 3 nearest USD Authorised Smile Designers are"
     return (
         f"{prefix}, {near_phrase}: {names_str_en}. "
         f"Would you like to consult with one of these doctors, or would you like to hear other options?"
@@ -650,7 +650,7 @@ def get_postoffices_for_branch_name(branch_name: str) -> Optional[List[Dict]]:
 
 def get_nearest_dentists_for_travel(patient_pincode: str, patient_city: str, target_city: str) -> List[Dict]:
     """
-    Returns the closest USD Certified Smile Designers in target_city ordered by proximity
+    Returns the closest USD Authorised Smile Designers in target_city ordered by proximity
     to the patient's incoming travel entry route from their residence city / pincode.
     E.g. If patient is from Bhavnagar (364001) traveling to Surat:
     The entry point into Surat is via Hazira Port (Ro-Pax) / Western Surat bypass -> Adajan (395009).
@@ -797,7 +797,7 @@ def format_travel_dentists_speech_text(
     Formats the spoken response recommending closest dentists in target_city when arriving from patient_city.
     """
     if not dentists:
-        return f"We would be delighted to assist you with booking an appointment in {target_city.title()}! Our team will contact you to connect you with our certified smile designer."
+        return f"We would be delighted to assist you with booking an appointment in {target_city.title()}! Our team will contact you to connect you with our authorised smile designer."
 
     names = [d.get("name", "") for d in dentists if d.get("name")]
     lk = (lang or "en").lower()
@@ -813,7 +813,7 @@ def format_travel_dentists_speech_text(
     elif names:
         names_str = names[0]
     else:
-        names_str = "our top certified smile designers"
+        names_str = "our top authorised smile designers"
 
     p_city_disp = patient_city.title() if patient_city else "your location"
     t_city_disp = target_city.title() if target_city else "the city"
@@ -822,7 +822,7 @@ def format_travel_dentists_speech_text(
     if lk in ["gu", "gujarati"]:
         return (
             f"ચોક્કસ! તમે {p_city_disp}થી આવો છો, તેથી {t_city_disp}માં પ્રવેશતા જ સૌથી પહેલા પહોંચી શકાય તેવા "
-            f"અમારા યુએસડી સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર {names_str} છે. "
+            f"અમારા USD Authorised Smile Designer {names_str} છે. "
             f"શું તમે આમાંથી કોઈ ડૉક્ટર પસંદ કરવા માંગો છો, કે અમારી ટીમ તમને માર્ગદર્શન આપે?"
         )
     if lk in ["hi", "hindi"]:
@@ -832,7 +832,7 @@ def format_travel_dentists_speech_text(
             f"क्या आप इनमें से किसी डॉक्टर को चुनना चाहेंगे, या हमारी टीम आपका मार्गदर्शन करे?"
         )
     return (
-        f"Certainly! As you are coming from {p_city_disp}, the first USD Certified Smile Designers you will reach "
+        f"Certainly! As you are coming from {p_city_disp}, the first USD Authorised Smile Designers you will reach "
         f"when arriving in {t_city_disp} are {names_str}. "
         f"Would you like to select one of these doctors, or should our team guide you?"
     )
@@ -975,12 +975,12 @@ def format_city_updated_speech(city: str, lang: str = "en") -> str:
     if lk == "gu":
         return (
             f"સમજી ગઈ! તમારું શહેર {city_display} નોંધાઈ ગયું છે. "
-            f"{city_display}માં તમારા સૌથી નજીકના USD સર્ટિફાઇડ સ્માઇલ ડિઝાઇનર શોધવા માટે, કૃપા કરીને તમારા વિસ્તારનો 6 અંકનો પિનકોડ જણાવશો?"
+            f"{city_display}માં તમારા સૌથી નજીકના USD Authorised Smile Designer શોધવા માટે, કૃપા કરીને તમારા વિસ્તારનો 6 અંકનો પિનકોડ જણાવશો?"
         )
     if lk == "hi":
         return (
             f"समझ गई! आपका शहर {city_display} दर्ज कर लिया गया है। "
-            f"{city_display} में आपके सबसे नजदीकी USD सर्टिफाइड स्माइल डिज़ाइनर ढूंढने के लिए, कृपया अपने क्षेत्र का 6 अंकों का पिनकोड बता दीजिए?"
+            f"{city_display} में आपके सबसे नजदीकी USD Authorised Smile Designer ढूंढने के लिए, कृपया अपने क्षेत्र का 6 अंकों का पिनकोड बता दीजिए?"
         )
     if lk == "mr":
         return (
@@ -990,7 +990,7 @@ def format_city_updated_speech(city: str, lang: str = "en") -> str:
     if lk == "bn":
         return (
             f"বুঝেছি! আপনার শহর {city_display} আপডেট করা হয়েছে। "
-            f"{city_display} তে আমাদের নিকটতম USD সার্টিফাইড স্মাইল ডিজাইনার খুঁজতে, দয়া করে আপনার এলাকার ৬ সংখ্যার পিনকোড বলুন?"
+            f"{city_display} তে আমাদের নিকটতম USD Authorised Smile Designer খুঁজতে, দয়া করে আপনার এলাকার ৬ সংখ্যার পিনকোড বলুন?"
         )
     if lk == "ta":
         return (
@@ -1015,16 +1015,16 @@ def format_city_updated_speech(city: str, lang: str = "en") -> str:
     if lk == "pa":
         return (
             f"ਸਮਝ ਗਈ! ਤੁਹਾਡਾ ਸ਼ਹਿਰ {city_display} ਅਪਡੇਟ ਹੋ ਗਿਆ ਹੈ। "
-            f"{city_display} ਵਿੱਚ ਸਾਡੇ ਸਭ ਤੋਂ ਨੇੜਲੇ USD ਪ੍ਰਮਾਣਿਤ ਸਮਾਈਲ ਡਿਜ਼ਾਈਨਰ ਲੱਭਣ ਲਈ, ਕਿਰਪਾ ਕਰਕੇ ਆਪਣੇ ਇਲਾਕੇ ਦਾ 6 ਅੰਕਾਂ ਦਾ ਪਿਨਕੋਡ ਦੱਸੋ?"
+            f"{city_display} ਵਿੱਚ ਸਾਡੇ ਸਭ ਤੋਂ ਨੇੜਲੇ USD Authorised Smile Designer ਲੱਭਣ ਲਈ, ਕਿਰਪਾ ਕਰਕੇ ਆਪਣੇ ਇਲਾਕੇ ਦਾ 6 ਅੰਕਾਂ ਦਾ ਪਿਨਕੋਡ ਦੱਸੋ?"
         )
     if lk == "or":
         return (
             f"ବୁଝିଗଲି! ଆପଣଙ୍କ ସହର {city_display} ଅପଡେଟ୍ ହୋଇଛି। "
-            f"{city_display} ରେ ଆମର ନିକଟତମ USD ସାର୍ଟିଫାଏଡ୍ ସ୍ମାଇଲ୍ ଡିଜାଇନର୍ ଖୋଜିବା ପାଇଁ, ଦୟାକରି ଆପଣଙ୍କ ଅଞ୍ଚଳର ୬ ଅଙ୍କ ବିଶିଷ୍ଟ ପିନକୋଡ୍ ଜଣାନ୍ତୁ?"
+            f"{city_display} ରେ ଆମର ନିକଟତମ USD Authorised Smile Designer ଖୋଜିବା ପାଇଁ, ଦୟାକରି ଆପଣଙ୍କ ଅଞ୍ଚଳର ୬ ଅଙ୍କ ବିଶିଷ୍ଟ ପିନକୋଡ୍ ଜଣାନ୍ତୁ?"
         )
     return (
         f"Understood! We have updated your city to {city_display}. "
-        f"To help find your nearest USD Certified Smile Designer in {city_display}, could you please tell me your 6-digit area pincode?"
+        f"To help find your nearest USD Authorised Smile Designer in {city_display}, could you please tell me your 6-digit area pincode?"
     )
 
 
@@ -1035,7 +1035,7 @@ def get_pincode_city_info(pincode: str) -> Dict[str, str]:
     """
     Extracts canonical city and display area information for a 6-digit Indian pincode.
     Distinguishes between:
-    - canonical_city: The primary district or certified city (e.g. 'Surat', 'Ahmedabad', 'Mumbai')
+    - canonical_city: The primary district or authorised city (e.g. 'Surat', 'Ahmedabad', 'Mumbai')
       used for database storage (appointment booking panel) and review summary.
     - display_city: The conversational display format (e.g. 'Sayan, Surat' or 'Surat')
       used when Riya asks the user for area/city confirmation in speech.
@@ -1054,7 +1054,7 @@ def get_pincode_city_info(pincode: str) -> Dict[str, str]:
     clean_block = block.strip() if block and block.upper() not in ["NA", "N/A", "NONE"] else ""
     clean_div = div.split("/")[0].split(",")[0].strip() if div else ""
 
-    # Known certified / independent district cities where block should stand alone as canonical city
+    # Known authorised / independent district cities where block should stand alone as canonical city
     KNOWN_INDEPENDENT_CITIES = {
         "Morbi", "Bhavnagar", "Surendranagar", "Anand", "Nadiad", "Mehsana", "Gandhinagar",
         "Navsari", "Valsad", "Junagadh", "Porbandar", "Bhuj", "Gandhidham", "Patan", "Palanpur",

@@ -67,7 +67,7 @@ APPOINTMENT_TOOL_DECLARATION = {
                     "city": {"type": "STRING", "description": "Patient's confirmed residence city (MUST be the patient's residence city where they live, e.g. Bhavnagar, NEVER the doctor's clinic city)"},
                     "pincode": {"type": "STRING", "description": "Patient's confirmed 6-digit area pincode / postal code"},
                     "message": {"type": "STRING", "description": "Patient's dental concern or consultation request notes"},
-                    "doctor_name": {"type": "STRING", "description": "USD Certified Dentist/Doctor name requested for the consultation (must be a verified USD certified smile designer)"},
+                    "doctor_name": {"type": "STRING", "description": "USD Authorised Dentist/Doctor name requested for the consultation (must be a verified USD authorised smile designer)"},
                     "is_cancel": {"type": "BOOLEAN", "description": "Whether the user requested to cancel the booking (true) or submit it (false)"}
                 },
                 "required": ["first_name", "phone", "city", "pincode", "message", "doctor_name"]
@@ -75,7 +75,7 @@ APPOINTMENT_TOOL_DECLARATION = {
         },
         {
             "name": "find_nearest_dentists",
-            "description": "Finds and returns the nearest USD Certified Smile Designer dentists based on the patient's confirmed 6-digit area pincode. STRICT MANDATE: You are strictly forbidden from calling this tool unless the patient has explicitly and genuinely provided a 6-digit area postal pincode in the conversation. NEVER guess, assume, or auto-pick a pincode from city name! If patient only gave a city, ask for their 6-digit area pincode first.",
+            "description": "Finds and returns the nearest USD Authorised Smile Designer dentists based on the patient's confirmed 6-digit area pincode. STRICT MANDATE: You are strictly forbidden from calling this tool unless the patient has explicitly and genuinely provided a 6-digit area postal pincode in the conversation. NEVER guess, assume, or auto-pick a pincode from city name! If patient only gave a city, ask for their 6-digit area pincode first.",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
@@ -226,9 +226,9 @@ class GeminiClient:
                     elif not self.session.user_concern:
                         active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 1 done -> Step 2 (Dental Concern). Greet {self.session.user_name} by name and ask ONLY what specific dental concern or smile goal they have (do NOT ask them to confirm their name). YOU ARE STRICTLY FORBIDDEN from asking for City, Doctor, Pincode, or Phone!")
                     elif not getattr(self.session, "consultation_agreed", False) and not self.session.booking_slots.get("pincode"):
-                        active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 2 confirmed -> Step 2.5 (Consultation Permission Gate). Acknowledge dental concern ({self.session.user_concern}), and ask ONLY: 'Would you like me to help book a consultation appointment with our USD Certified Smile Designer for this?'. YOU MUST WAIT FOR PATIENT TO SAY YES before asking for Pincode! DO NOT ask about profession, city, or pincode in this turn!")
+                        active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 2 confirmed -> Step 2.5 (Consultation Permission Gate). Acknowledge dental concern ({self.session.user_concern}), and ask ONLY: 'Would you like me to help book a consultation appointment with our USD Authorised Smile Designer for this?'. YOU MUST WAIT FOR PATIENT TO SAY YES before asking for Pincode! DO NOT ask about profession, city, or pincode in this turn!")
                     elif not self.session.booking_slots.get("pincode") and not getattr(self.session, "city_confirm_needed", False):
-                        active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 3 (6-Digit Area Pincode FIRST). Ask ONLY for their 6-digit area pincode ('To help find your nearest USD Certified Smile Designer, could you please tell me your 6-digit area pincode?'). YOU ARE STRICTLY FORBIDDEN from asking for city, doctor, or phone in this turn! DO NOT ask about profession!")
+                        active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 3 (6-Digit Area Pincode FIRST). Ask ONLY for their 6-digit area pincode ('To help find your nearest USD Authorised Smile Designer, could you please tell me your 6-digit area pincode?'). YOU ARE STRICTLY FORBIDDEN from asking for city, doctor, or phone in this turn! DO NOT ask about profession!")
                     elif getattr(self.session, "city_confirm_needed", False) or (getattr(self.session, "pending_pincode", None) and not getattr(self.session, "city_pincode_locked", False)):
                         p_pin = getattr(self.session, "pending_pincode", "") or self.session.booking_slots.get("pincode", "")
                         p_cit = getattr(self.session, "pending_display_city", "") or getattr(self.session, "pending_city", "") or self.session.booking_slots.get("city", "")
@@ -746,7 +746,7 @@ class GeminiClient:
                                                         "address": d.get("address", "")
                                                     } for d in dentists_slice
                                                 ],
-                                                "instruction": "Speak ALL 3 doctor names aloud to the patient! Since cities like Vadodara have 2 certified doctors (Dr. Khushbu Patel and Dr. Kaveena Parikh), the 3rd doctor is in nearby adjacent hub (e.g. Dr. Jigar P. Thakkar in nearby Ahmedabad). Always speak all 3 doctor names aloud! Then ask ONLY ONE question: do they want one of these doctors, or should our team guide them? Do NOT ask for the phone number in this reply."
+                                                "instruction": "Speak ALL 3 doctor names aloud to the patient! Since cities like Vadodara have 2 authorised doctors (Dr. Khushbu Patel and Dr. Kaveena Parikh), the 3rd doctor is in nearby adjacent hub (e.g. Dr. Jigar P. Thakkar in nearby Ahmedabad). Always speak all 3 doctor names aloud! Then ask ONLY ONE question: do they want one of these doctors, or should our team guide them? Do NOT ask for the phone number in this reply."
                                             }
                                         }
                                     })
@@ -801,7 +801,7 @@ class GeminiClient:
                                                     "address": d.get("address")
                                                 } for d in dentists_slice
                                             ],
-                                            "instruction": "Speak ALL 3 doctor names aloud to the patient! Since cities like Vadodara have 2 certified doctors (Dr. Khushbu Patel and Dr. Kaveena Parikh), the 3rd doctor is in nearby adjacent hub (e.g. Dr. Jigar P. Thakkar in nearby Ahmedabad). Always speak all 3 doctor names aloud! Then ask ONLY ONE question: do they want one of these doctors, or should our team guide them? Do NOT ask for the phone number in this reply."
+                                            "instruction": "Speak ALL 3 doctor names aloud to the patient! Since cities like Vadodara have 2 authorised doctors (Dr. Khushbu Patel and Dr. Kaveena Parikh), the 3rd doctor is in nearby adjacent hub (e.g. Dr. Jigar P. Thakkar in nearby Ahmedabad). Always speak all 3 doctor names aloud! Then ask ONLY ONE question: do they want one of these doctors, or should our team guide them? Do NOT ask for the phone number in this reply."
                                         }
                                     }
                                 })
