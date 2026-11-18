@@ -638,6 +638,8 @@ class GeminiClient:
                                 if full_args.get("is_cancel"):
                                     self.session.booking_slots["is_cancel"] = True
                                     self.session.pending_cancellation = False
+                                else:
+                                    self.session.booking_slots["is_cancel"] = False
                                 if isinstance(result.get("details"), dict):
                                     ret_id = result["details"].get("id") or result["details"].get("submission_id")
                                     if ret_id:
@@ -1085,6 +1087,8 @@ class GeminiClient:
                                     if full_args.get("is_cancel"):
                                         self.session.booking_slots["is_cancel"] = True
                                         self.session.pending_cancellation = False
+                                    else:
+                                        self.session.booking_slots["is_cancel"] = False
                                     if isinstance(res.get("details"), dict):
                                         ret_id = res["details"].get("id") or res["details"].get("submission_id")
                                         if ret_id:
@@ -1568,6 +1572,8 @@ class GeminiClient:
                                     self.session.pending_cancellation = False
                                     self.session.consultation_declined = True
                                     self.session.asking_for_field = None
+                                else:
+                                    self.session.booking_slots["is_cancel"] = False
                                 if isinstance(res.get("details"), dict):
                                     ret_id = res["details"].get("id") or res["details"].get("submission_id")
                                     if ret_id:

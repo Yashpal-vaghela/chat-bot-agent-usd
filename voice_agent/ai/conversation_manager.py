@@ -1277,7 +1277,8 @@ class ConversationManager:
                 # 'pincode', 'city', and 'doctor_name' are validated below via corpus checks.
                 # Allowing them through here causes stale JS-held values to resurrect after
                 # the bot explicitly cleared them (e.g. after a city edit).
-                _protected_slot_keys = {"pincode", "city", "doctor_name"}
+                # 'is_cancel' is server-owned: it is set only after a confirmed backend cancel.
+                _protected_slot_keys = {"pincode", "city", "doctor_name", "is_cancel"}
                 for k, v in client_slots.items():
                     if k in _protected_slot_keys:
                         continue  # handled by validated paths below
@@ -1586,9 +1587,10 @@ class ConversationManager:
             self.session.booking_slots["first_name"] = ""
             self.session.booking_slots["last_name"] = ""
 
-        # Flag appointment cancellation if detected in current utterance
+        # Flag a pending cancellation request. booking_slots["is_cancel"] is set ONLY after the
+        # backend confirms the cancel; setting it here made the cancel paths think the booking
+        # was "already cancelled" and skip the backend call.
         if user_text and is_cancel_submit(user_text, self.session):
-            self.session.booking_slots["is_cancel"] = True
             self.session.pending_cancellation = True
             print(f"[CANCELLATION-FLAGGED] User utterance '{user_text}' flagged session cancellation!")
 
@@ -3509,8 +3511,10 @@ class ConversationManager:
                 if is_cancel:
                     self.session.booking_slots["is_cancel"] = True
                     self.session.booking_slots["is_submitted"] = False
+                    self.session.pending_cancellation = False
                 else:
                     self.session.booking_slots["is_submitted"] = True
+                    self.session.booking_slots["is_cancel"] = False
                 if isinstance(res.get("details"), dict):
                     ret_id = res["details"].get("id") or res["details"].get("submission_id")
                     if ret_id:
@@ -3679,9 +3683,11 @@ class ConversationManager:
                                                             if effective_is_cancel:
                                                                 self.session.booking_slots["is_cancel"] = True
                                                                 self.session.booking_slots["is_submitted"] = False
+                                                                self.session.pending_cancellation = False
                                                                 confirm_msg = CONFIRMATION_CANCEL_MESSAGES_11.get(user_lang, CONFIRMATION_CANCEL_MESSAGES_11["en"])
                                                             else:
                                                                 self.session.booking_slots["is_submitted"] = True
+                                                                self.session.booking_slots["is_cancel"] = False
                                                                 self.session.slots_edited_after_submit = False
                                                                 confirm_msg = CONFIRMATION_MESSAGES_11.get(user_lang, CONFIRMATION_MESSAGES_11["en"])
                                                             if isinstance(res.get("details"), dict):
@@ -4286,13 +4292,13 @@ class ConversationManager:
                 self.session.add_transcript_turn("model", clean_text)
 
             # If user or model cancelled appointment in this turn, ensure DB is updated
-            is_cancel_turn = is_cancel_submit(user_text, self.session) or \
-                             is_cancel_response_text(clean_text) or \
-                             bool(getattr(self.session, "pending_cancellation", False)) or \
-                             bool(self.session.booking_slots.get("is_cancel"))
+            # Skip if the backend already confirmed this cancellation (avoids re-cancelling every turn)
+            already_cancelled = bool(self.session.booking_slots.get("is_cancel"))
+            is_cancel_turn = not already_cancelled and (
+                             is_cancel_submit(user_text, self.session) or
+                             is_cancel_response_text(clean_text) or
+                             bool(getattr(self.session, "pending_cancellation", False)))
             if is_cancel_turn:
-                self.session.booking_slots["is_cancel"] = True
-                self.session.pending_cancellation = False
                 c_args = dict(self.session.booking_slots)
                 c_args["is_cancel"] = True
                 c_args["is_update"] = True
@@ -4302,7 +4308,12 @@ class ConversationManager:
                     c_args["id"] = sub_id
                 try:
                     c_res = await submit_consultation_appointment(c_args)
-                    print(f"[SUCCESS] Voice Mode cancellation synced to DB in transcribe_and_sync_bot_text: {c_res}")
+                    if c_res.get("status") == "success":
+                        self.session.booking_slots["is_cancel"] = True
+                        self.session.pending_cancellation = False
+                        print(f"[SUCCESS] Voice Mode cancellation synced to DB in transcribe_and_sync_bot_text: {c_res}")
+                    else:
+                        print(f"[WARN] Voice Mode cancellation NOT confirmed by backend: {c_res}")
                 except Exception as ce:
                     print(f"[WARN] Error executing cancellation in transcribe_and_sync_bot_text: {ce}")
             

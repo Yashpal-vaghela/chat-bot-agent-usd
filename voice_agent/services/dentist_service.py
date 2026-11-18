@@ -1,3 +1,4 @@
+import os
 import re
 import time
 import requests
@@ -7,13 +8,134 @@ from typing import List, Dict, Optional, Tuple
 _PINCODE_DENTISTS_CACHE: Dict[str, Tuple[float, List[Dict]]] = {}
 CACHE_TTL = 300  # 5 minutes cache
 
-PINCODE_API_URL = "https://ultimatesmiledesign.com/api/dentists-list/pincode/"
+# This API returns every dentist with latitude/longitude and `distance_km` from the searched
+# pincode, already sorted nearest-first. Override with DENTIST_LIST_API_URL in .env.
+PINCODE_API_URL = os.getenv("DENTIST_LIST_API_URL", "https://uat.ultimatesmiledesign.com/api/dentists-list/pincode/")
+API_TIMEOUT = (5.0, 12.0)  # (connect, read) seconds
+API_ATTEMPTS = 2
+
+# Last full dentist list the API returned (the API always returns every dentist,
+# only the order differs), reused when the API is down or slow.
+_LAST_GOOD_DENTISTS: List[Dict] = []
+_PINCODE_COORDS_CACHE: Dict[str, Tuple[float, float]] = {}
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    import math
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = p2 - p1
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def _in_india(lat: float, lon: float) -> bool:
+    return 6.0 <= lat <= 37.5 and 68.0 <= lon <= 97.5
+
+
+def get_pincode_coordinates(pincode: str) -> Optional[Tuple[float, float]]:
+    """
+    Returns (lat, lon) for a 6-digit Indian pincode via OpenStreetMap Nominatim.
+    Tries the postal code first, then falls back to the India Post district + state.
+    Successful lookups are cached in memory.
+    """
+    clean_pin = re.sub(r"\D", "", str(pincode or "")).strip()
+    if len(clean_pin) != 6:
+        return None
+    if clean_pin in _PINCODE_COORDS_CACHE:
+        return _PINCODE_COORDS_CACHE[clean_pin]
+
+    coords = None
+    try:
+        from geopy.geocoders import Nominatim
+        geo = Nominatim(user_agent="usd-dentist-locator", timeout=4)
+
+        loc = geo.geocode({"postalcode": clean_pin, "country": "India"})
+        if loc and _in_india(loc.latitude, loc.longitude):
+            # If India Post state is already known, reject a result from another state
+            state = (_POSTAL_LOCATION_CACHE.get(clean_pin) or {}).get("state") or ""
+            if not state or state.lower() in (loc.address or "").lower():
+                coords = (loc.latitude, loc.longitude)
+
+        if not coords:
+            info = get_location_for_pincode(clean_pin)
+            if info and info.get("district"):
+                district = info["district"].split("/")[0].strip()
+                query = ", ".join(x for x in [district, info.get("state") or "", "India"] if x)
+                loc = geo.geocode(query)
+                if loc and _in_india(loc.latitude, loc.longitude):
+                    coords = (loc.latitude, loc.longitude)
+    except Exception as e:
+        print(f"[WARN] Geocoding failed for pincode '{clean_pin}': {e}")
+
+    if coords:
+        _PINCODE_COORDS_CACHE[clean_pin] = coords
+        print(f"[GEO] 📍 Pincode {clean_pin} -> {coords[0]:.4f}, {coords[1]:.4f}")
+    return coords
+
+
+def _sort_dentists_by_distance(dentists: List[Dict], pincode: str) -> List[Dict]:
+    """
+    Re-orders dentists by real road-agnostic (haversine) distance from the patient's pincode.
+    The dentist API orders by numeric pincode difference, which is wrong across regions
+    (e.g. Amreli 365601 got Halvad 363330 before Rajkot 360xxx).
+    Dentists without coordinates go last. If the pincode can't be geocoded, the API order is kept.
+    """
+    origin = get_pincode_coordinates(pincode)
+    if not origin:
+        # Drop distances that belong to some other pincode's search
+        return [{k: v for k, v in d.items() if k != "distance_km"} for d in dentists]
+
+    with_dist, without_dist = [], []
+    for d in dentists:
+        try:
+            lat, lon = float(d.get("latitude")), float(d.get("longitude"))
+        except (TypeError, ValueError):
+            without_dist.append(d)
+            continue
+        if not _in_india(lat, lon):
+            without_dist.append(d)
+            continue
+        item = dict(d)
+        item["distance_km"] = round(_haversine_km(origin[0], origin[1], lat, lon), 1)
+        with_dist.append(item)
+
+    with_dist.sort(key=lambda x: x["distance_km"])
+    return with_dist + without_dist
+
+
+def _api_distance(d: Dict) -> Optional[float]:
+    try:
+        return float(d.get("distance_km"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _has_api_distances(dentists: List[Dict]) -> bool:
+    """True when the API response carries distance_km (newer dentists-list API)."""
+    return any(_api_distance(d) is not None for d in dentists)
+
+
+def _sort_by_api_distance(dentists: List[Dict]) -> List[Dict]:
+    """Nearest-first by the API's distance_km; entries without a distance go last.
+
+    The API computes road distance only for the nearest dentists (distance_type "road") and
+    straight-line distance for the rest. Straight-line km is always shorter than road km, so
+    the two must not be compared: road-distance dentists come first, then straight-line ones.
+    """
+    with_dist = [d for d in dentists if _api_distance(d) is not None]
+    without_dist = [d for d in dentists if _api_distance(d) is None]
+    with_dist.sort(key=lambda d: (d.get("distance_type") not in (None, "road"), _api_distance(d)))
+    return with_dist + without_dist
+
 
 def fetch_dentists_by_pincode_sync(pincode: str) -> List[Dict]:
     """
-    Fetches dentists from API sorted by proximity to the provided pincode.
+    Fetches dentists from API and sorts them by real distance to the provided pincode.
     Uses in-memory caching for performance and minimal latency.
     """
+    global _LAST_GOOD_DENTISTS
     clean_pin = re.sub(r"\D", "", str(pincode or "")).strip()
     now = time.time()
 
@@ -25,26 +147,45 @@ def fetch_dentists_by_pincode_sync(pincode: str) -> List[Dict]:
 
     params = {"pincode": clean_pin} if (clean_pin and len(clean_pin) == 6) else {}
     print(f"[API-FETCH] 🌐 Fetching dentists from API: {PINCODE_API_URL}?pincode={clean_pin}")
-    try:
-        resp = requests.get(PINCODE_API_URL, params=params, timeout=5.0)
-        if resp.status_code == 200:
-            data_json = resp.json()
-            dentists = data_json.get("data", [])
-            if isinstance(dentists, list) and dentists:
-                print(f"[API-SUCCESS] ✅ Successfully fetched {len(dentists)} dentists near pincode '{clean_pin}': {[d.get('name') for d in dentists[:3]]}")
-                _PINCODE_DENTISTS_CACHE[clean_pin] = (now, dentists)
-                return dentists
-    except Exception as e:
-        print(f"[WARN] Error fetching dentists from API for pincode '{clean_pin}': {e}")
+    api_dentists = None
+    for attempt in range(1, API_ATTEMPTS + 1):
+        try:
+            resp = requests.get(PINCODE_API_URL, params=params, timeout=API_TIMEOUT)
+            if resp.status_code == 200:
+                dentists = resp.json().get("data", [])
+                if isinstance(dentists, list) and dentists:
+                    api_dentists = dentists
+                    break
+                print(f"[WARN] Dentist API returned empty list for pincode '{clean_pin}' (attempt {attempt})")
+            else:
+                print(f"[WARN] Dentist API returned HTTP {resp.status_code} for pincode '{clean_pin}' (attempt {attempt})")
+        except Exception as e:
+            print(f"[WARN] Error fetching dentists from API for pincode '{clean_pin}' (attempt {attempt}): {e}")
 
-    # Fallback to cached data if available
+    if api_dentists:
+        _LAST_GOOD_DENTISTS = api_dentists
+        if _has_api_distances(api_dentists):
+            # API already computed distance from this pincode: use it, no geocoding needed
+            sorted_dentists = _sort_by_api_distance(api_dentists)
+        else:
+            sorted_dentists = _sort_dentists_by_distance(api_dentists, clean_pin)
+        print(f"[API-SUCCESS] ✅ Fetched {len(sorted_dentists)} dentists, nearest to pincode '{clean_pin}': "
+              f"{[(d.get('name'), d.get('distance_km')) for d in sorted_dentists[:3]]}")
+        _PINCODE_DENTISTS_CACHE[clean_pin] = (now, sorted_dentists)
+        return sorted_dentists
+
+    # Fallback 1: stale cache for this exact pincode
     if clean_pin in _PINCODE_DENTISTS_CACHE:
+        print(f"[API-FALLBACK] ⚠️ Using stale cached dentists for pincode '{clean_pin}'")
         return _PINCODE_DENTISTS_CACHE[clean_pin][1]
 
-    if "" in _PINCODE_DENTISTS_CACHE:
-        return _PINCODE_DENTISTS_CACHE[""][1]
+    # Fallback 2: full list from an earlier successful call, re-sorted for this pincode
+    if _LAST_GOOD_DENTISTS:
+        print(f"[API-FALLBACK] ⚠️ Dentist API unavailable, re-sorting last known list for pincode '{clean_pin}'")
+        return _sort_dentists_by_distance(_LAST_GOOD_DENTISTS, clean_pin)
 
-    # Robust offline fallback to prevent bot silence or empty recommendation
+    # Fallback 3 (last resort): static doctor list, NOT sorted by distance
+    print(f"[API-FALLBACK] ❌ Dentist API unavailable and no cached list; using static doctor list for pincode '{clean_pin}'")
     try:
         from voice_agent.utils.helpers import ALL_CERTIFIED_DOCTORS_LIST, DOCTOR_HOME_CITIES
         p_prefix = clean_pin[:2] if clean_pin else ""
