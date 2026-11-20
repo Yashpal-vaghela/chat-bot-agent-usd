@@ -41,7 +41,7 @@ ALL_AUTHORISED_DOCTORS = ALL_CERTIFIED_DOCTORS = [
     "Dr. Surangana Gupta", "Dr. Jaydev Roy", "Dr. Himanshu Sharma",
     "Dr. Aman Singhal", "Dr. Mohammed Issak", "Dr. Srilakshmi CH", "Dr. M Jaydev",
     "Dr. Reuben Joseph", "Dr. Praneeth Kumar", "Dr. Kalyani Jagdale", "Dr. Digvijay Deshpande",
-    "Dr. Adil Lyngdoh", "Dr. Asmita Sodhi", "Dr. Neetu Jindal", "Dr. A K Saha"
+    "Dr. Adil Lyngdoh", "Dr. Asmita Sodhi", "Dr. Neetu Jindal", "Dr. A K Saha", "Dr. Chinar Patel"
 ]
 
 _RECENT_SUBMISSIONS_CACHE = {}
@@ -257,16 +257,7 @@ def fetch_existing_lead_data(sub_id, phone_val):
                 lead = UserSubmission.objects.filter(phone__endswith=digits[-10:]).order_by('-id').first()
             except Exception:
                 lead = None
-    if not lead:
-        try:
-            cand = UserSubmission.objects.order_by('-id').first()
-            if cand and cand.created_at:
-                import datetime
-                now_utc = datetime.datetime.now(datetime.timezone.utc)
-                if (now_utc - cand.created_at).total_seconds() < 1800:
-                    lead = cand
-        except Exception:
-            lead = None
+    # (No "latest lead of the last 30 minutes" fallback: that could be ANOTHER patient's lead)
     if lead:
         return {
             "id": lead.id,
@@ -278,6 +269,7 @@ def fetch_existing_lead_data(sub_id, phone_val):
             "message": lead.message,
             "email": lead.email,
             "phone": lead.phone,
+            "is_cancel": bool(getattr(lead, "is_cancel", False)),
         }
     return None
 
@@ -287,7 +279,6 @@ def save_lead_to_local_db(payload: dict):
     from account.models import UserSubmission
     lead_id = payload.get('id') or payload.get('lead_id') or payload.get('submission_id')
     is_cancel = bool(payload.get('is_cancel', False))
-    is_update = bool(payload.get('is_update', False)) or bool(lead_id)
     phone_val = str(payload.get('phone', '')).strip()
     old_phone_val = str(payload.get('old_phone', '')).strip()
 
@@ -298,31 +289,17 @@ def save_lead_to_local_db(payload: dict):
         except (UserSubmission.DoesNotExist, ValueError):
             lead = None
 
-    # If no lead_id found by ID, match the most recent lead with same old_phone or phone if this is an update or cancellation
-    if not lead and old_phone_val and (is_cancel or is_update):
-        old_digits = "".join(filter(str.isdigit, old_phone_val))
-        if len(old_digits) >= 10:
-            recent_leads = UserSubmission.objects.filter(phone__endswith=old_digits[-10:]).order_by('-id')
-            if recent_leads.exists():
-                lead = recent_leads.first()
-
-    if not lead and phone_val and (is_cancel or is_update):
-        digits = "".join(filter(str.isdigit, phone_val))
-        if len(digits) >= 10:
-            recent_leads = UserSubmission.objects.filter(phone__endswith=digits[-10:]).order_by('-id')
-            if recent_leads.exists():
-                lead = recent_leads.first()
-
-    # Fallback for updates & cancellations: if lead still not found by ID or phone,
-    # find the most recent lead created in the last 30 minutes to update/cancel in place instead of creating a duplicate row!
-    if not lead and (is_update or is_cancel):
-        recent_leads = UserSubmission.objects.order_by('-id')
-        if recent_leads.exists():
-            candidate = recent_leads.first()
-            import datetime
-            now_utc = datetime.datetime.now(datetime.timezone.utc)
-            if candidate.created_at and (now_utc - candidate.created_at).total_seconds() < 1800:
-                lead = candidate
+    # A NEW booking always creates a new row (newest at the top). Only an update/cancel of the lead THIS
+    # conversation created (lead_id) changes an existing row. Matching by phone is allowed only for a cancellation
+    # without a lead id (patient calls back to cancel); never "the latest lead of the last 30 minutes", which
+    # could be another patient's lead.
+    if not lead and is_cancel:
+        for ph in (old_phone_val, phone_val):
+            digits = "".join(filter(str.isdigit, ph))
+            if len(digits) >= 10:
+                lead = UserSubmission.objects.filter(phone__endswith=digits[-10:]).order_by('-id').first()
+                if lead:
+                    break
 
     city_val = str(payload.get('city') or '').strip()
     pin_val = str(payload.get('pincode') or '').strip()
@@ -430,7 +407,11 @@ def sync_lead_to_godaddy_sqlite(payload: dict) -> int:
         print(f"[WARN] Failed to sync lead to GoDaddy SQLite: {e}")
     return 0
 
-_API_LEAD_MAP = {}  # In-memory cache mapping phone (10-digits) -> API lead_id
+_API_LEAD_MAP = {}  # local UserSubmission id -> the consultation API's lead id
+_API_SYNC_TASKS = {}  # local UserSubmission id -> in-flight consultation API task
+# Submit waits for the API's full answer (its own timeout is 10 s); the UI shows "Riya is submitting..." meanwhile.
+# Only a call that is still hanging after this finishes in the background.
+API_SYNC_WAIT_SECONDS = float(os.getenv("CONSULT_API_WAIT_SECONDS", "12"))
 _LOCAL_API_LEAD_MAP = _API_LEAD_MAP
 
 def sync_lead_to_api_endpoint(payload: dict) -> int:
@@ -476,14 +457,12 @@ def sync_lead_to_api_endpoint(payload: dict) -> int:
             "is_update": is_update,
         }
 
-        # For updates or cancellations, pass the API lead ID
-        api_lead_id = (
-            payload.get("api_id")
-            or payload.get("local_api_id")
-            or _API_LEAD_MAP.get(phone_digits)
-        )
-        if not api_lead_id and (is_cancel or is_update):
-            api_lead_id = payload.get("submission_id") or payload.get("id")
+        # Only an update/cancel of the lead THIS conversation created carries the API's own lead id. A new booking
+        # never sends an id (it must become a new lead at the top), and the LOCAL db id is never sent: the API
+        # treated local id 273 as its own (old, June) lead 273 and kept overwriting it.
+        api_lead_id = None
+        if is_cancel or is_update:
+            api_lead_id = payload.get("api_id") or payload.get("local_api_id")
 
         if api_lead_id:
             api_payload["id"] = api_lead_id
@@ -499,8 +478,8 @@ def sync_lead_to_api_endpoint(payload: dict) -> int:
                 if ret_id:
                     payload["api_id"] = ret_id
                     payload["local_api_id"] = ret_id
-                    if phone_digits:
-                        _API_LEAD_MAP[phone_digits] = ret_id
+                    if payload.get("id"):
+                        _API_LEAD_MAP[payload["id"]] = ret_id  # keyed by OUR lead id, never by phone
                 return ret_id
             else:
                 print(f"[WARN] Consultation API endpoint returned status {resp.status_code}: {resp.text}")
@@ -565,10 +544,26 @@ async def submit_consultation_appointment(data: dict) -> dict:
     phone = str(data.get("phone", "")).strip()
     digits_only = "".join(filter(str.isdigit, phone))
 
+    # A lead is only ever updated when THIS conversation created it (sub_id). Without one, a booking is new;
+    # a cancellation may still find the patient's latest lead by phone.
+    if not sub_id:
+        data["is_update"] = False
+        for k in ("api_id", "local_api_id", "godaddy_id", "godaddy_lead_id"):
+            data.pop(k, None)
+
     # If this is an existing lead or cancellation, prefill missing fields from existing lead
-    if (sub_id or digits_only) and (is_cancel or data.get("is_update")):
+    if (sub_id and (is_cancel or data.get("is_update"))) or (is_cancel and digits_only):
         try:
-            lead_info = await fetch_existing_lead_data(sub_id, phone)
+            lead_info = await fetch_existing_lead_data(sub_id, phone if is_cancel else None)
+            if lead_info and not is_cancel and lead_info.get("is_cancel"):
+                # Booking again after cancelling: that is a NEW request (new row at the top), not a revival of
+                # the cancelled one
+                print(f"[INFO] Lead {lead_info['id']} was cancelled -> this booking is saved as a new lead")
+                for k in ("id", "submission_id", "api_id", "local_api_id", "godaddy_id", "godaddy_lead_id"):
+                    data.pop(k, None)
+                data["is_update"] = False
+                sub_id = None
+                lead_info = None
             if lead_info:
                 if not data.get("first_name"):
                     data["first_name"] = lead_info["first_name"]
@@ -618,13 +613,15 @@ async def submit_consultation_appointment(data: dict) -> dict:
     first_name = transliterate_to_english(raw_first_name)
     last_name = transliterate_to_english(raw_last_name) if raw_last_name != "-" else "-"
 
+    # Exactly a 10-digit mobile (a '0' / '91' prefix is fine); a longer number is never cut down to 10 digits
+    from voice_agent.utils.helpers import normalize_mobile
     phone = str(data.get("phone", "")).strip()
-    digits_only = "".join(filter(str.isdigit, phone))
-    if len(digits_only) < 10:
+    digits_only = normalize_mobile(phone) or ""
+    if not digits_only:
         return {
             "status": "error",
             "missing_field": "phone",
-            "message": "Cannot submit appointment: A valid 10-digit phone number is compulsory. Please ask the patient for their 10-digit phone number before submitting."
+            "message": "Cannot submit appointment: A valid 10-digit mobile number (exactly 10 digits, starting with 6-9) is compulsory. Please ask the patient for their 10-digit mobile number again before submitting."
         }
 
     city = str(data.get("city", "")).strip()
@@ -700,13 +697,14 @@ async def submit_consultation_appointment(data: dict) -> dict:
         message = f"{message} [request cancel]".strip()
 
     sub_id = data.get("id") or data.get("submission_id")
-    is_update = bool(data.get("is_update", False)) or bool(sub_id) or bool(data.get("is_submitted", False))
+    # Update only when there is a lead of this conversation to update; otherwise it is a new lead
+    is_update = bool(sub_id)
 
     payload = {
         "first_name": first_name,
         "last_name": last_name,
         "email": valid_email,
-        "phone": digits_only[-10:],
+        "phone": digits_only,
         "city": city,
         "pincode": digits_pin,
         "message": message,
@@ -737,11 +735,33 @@ async def submit_consultation_appointment(data: dict) -> dict:
     except Exception as db_err:
         print(f"[INFO] Local DB save skipped: {db_err}")
 
-    # ⚡ 2. Direct POST to Consultation API endpoint (http://192.168.0.161:1020/api/consult-with-dentist/) ⚡
+    # ⚡ 2. Direct POST to Consultation API endpoint ⚡
+    # Waits for the API's answer (up to API_SYNC_WAIT_SECONDS; the voice UI shows "Riya is submitting..."), so the
+    # lead is really saved before Riya says it is submitted. The API's lead id is
+    # remembered per LOCAL lead id (_API_LEAD_MAP), and a later update/cancel of that same lead first waits for
+    # the in-flight call, so it targets the API lead this conversation created - never another (old) lead.
+    lead_key = payload.get("id")
     try:
-        # Blocking HTTP call (up to 10 s timeout): run it in a worker thread so the event loop keeps relaying
-        # mic audio to Gemini and bot audio to the client (otherwise barge-in and hearing stall during the call)
-        api_id = await asyncio.to_thread(sync_lead_to_api_endpoint, payload)
+        if is_update or is_cancel:
+            prev_task = _API_SYNC_TASKS.get(lead_key) if lead_key else None
+            if prev_task and not prev_task.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(prev_task), timeout=10.0)
+                except Exception:
+                    pass
+            if not payload.get("api_id") and lead_key and _API_LEAD_MAP.get(lead_key):
+                payload["api_id"] = _API_LEAD_MAP[lead_key]
+        else:
+            payload.pop("api_id", None)
+            payload.pop("local_api_id", None)
+        api_task = asyncio.create_task(asyncio.to_thread(sync_lead_to_api_endpoint, payload))
+        if lead_key:
+            _API_SYNC_TASKS[lead_key] = api_task
+        try:
+            api_id = await asyncio.wait_for(asyncio.shield(api_task), timeout=API_SYNC_WAIT_SECONDS)
+        except asyncio.TimeoutError:
+            api_id = 0
+            print(f"[INFO] Consultation API slower than {API_SYNC_WAIT_SECONDS}s; finishing in the background")
         if api_id:
             payload["api_id"] = api_id
             data["api_id"] = api_id

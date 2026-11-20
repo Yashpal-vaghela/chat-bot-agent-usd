@@ -10,7 +10,7 @@ CACHE_TTL = 300  # 5 minutes cache
 
 # This API returns every dentist with latitude/longitude and `distance_km` from the searched
 # pincode, already sorted nearest-first. Override with DENTIST_LIST_API_URL in .env.
-PINCODE_API_URL = os.getenv("DENTIST_LIST_API_URL", "https://uat.ultimatesmiledesign.com/api/dentists-list/pincode/")
+PINCODE_API_URL = os.getenv("DENTIST_LIST_API_URL", "https://ultimatesmiledesign.com/api/dentists-list/pincode/")
 API_TIMEOUT = (5.0, 12.0)  # (connect, read) seconds
 API_ATTEMPTS = 2
 
@@ -386,19 +386,39 @@ def get_doctor_city(doctor_dict_or_name: any) -> str:
     return ""
 
 
+# Opener for the dentist list spoken right after the patient confirmed their area. The list used to start with
+# "According to your pincode 394130, ..." - the same words as the area question just before it - so in voice the
+# patient thought Riya was asking the area question again, said "yes" again over her and cut the list off, in a loop.
+AREA_CONFIRMED_OPENER = {
+    "gu": "આભાર!", "hi": "धन्यवाद!", "mr": "धन्यवाद!", "bn": "ধন্যবাদ!", "ta": "நன்றி!", "te": "ధన్యవాదాలు!",
+    "kn": "ಧನ್ಯವಾದಗಳು!", "ml": "നന്ദി!", "pa": "ਧੰਨਵਾਦ!", "or": "ଧନ୍ୟବାଦ!", "en": "Thank you!",
+}
+
+
 def format_dentists_speech_text(
-    dentists: List[Dict], 
-    pincode: str, 
-    lang: str = "en", 
-    is_more: bool = False, 
+    dentists: List[Dict],
+    pincode: str,
+    lang: str = "en",
+    is_more: bool = False,
     is_update: bool = False,
-    user_city: Optional[str] = None
+    user_city: Optional[str] = None,
+    after_city_confirm: bool = False,
 ) -> str:
     """
     Creates a natural conversational string listing the 3 dentists in the requested language.
     Supports is_update=True when the patient changed their pincode.
     Explicitly mentions the doctor's city if nearest doctors are located in a different city.
+    after_city_confirm=True: the patient just confirmed their area, so start with "Thank you!" instead of repeating
+    "According to your pincode X" (the opening words of the area question).
     """
+    if after_city_confirm and not is_more:
+        text = format_dentists_speech_text(dentists, pincode, lang, is_more=False, is_update=is_update, user_city=user_city)
+        head, sep, rest = text.partition(", ")
+        if sep and pincode and str(pincode) in head:
+            opener = AREA_CONFIRMED_OPENER.get((lang or "en")[:2].lower(), AREA_CONFIRMED_OPENER["en"])
+            text = f"{opener} {rest[:1].upper()}{rest[1:]}"
+        return text
+
     if not dentists:
         return ""
 

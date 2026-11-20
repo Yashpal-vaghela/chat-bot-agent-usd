@@ -1843,55 +1843,9 @@
         const savedSlots = JSON.parse(sessionStorage.getItem('usd_booking_slots') || '{}');
         if (savedSlots.message) return savedSlots.message;
 
-        if (!chatHistory || !chatHistory.length) return "";
-
-        for (let i = 0; i < chatHistory.length; i++) {
-            const turn = chatHistory[i];
-            if (turn.role === 'user' && turn.parts && turn.parts[0] && turn.parts[0].text) {
-                const text = turn.parts[0].text.toLowerCase();
-                if (text.includes("explain") || text.includes("what is") || text.includes("how does") || text.includes("tell me about") || text.includes("su che") || text.includes("kya hai")) {
-                    continue;
-                }
-                if (text.includes("gap") || text.includes("diastema") || text.includes("space between") || text.includes("spacing") || text.includes("gaap") || text.includes("fanko") || text.includes("fanka")) {
-                    return "gaps between teeth";
-                }
-                if (text.includes("crooked") || text.includes("misaligned") || text.includes("crowded") || text.includes("overlap") ||
-                    text.includes("straighten") || text.includes("unorganise") || text.includes("unorganized") || text.includes("irregular") ||
-                    text.includes("uneven") || text.includes("tedhe") || text.includes("terhe") || text.includes("alignment") || text.includes("baanka") ||
-                    text.includes("વાંકા") || text.includes("વાંકાચૂંકા") || text.includes("ટેઢા") || text.includes("ટેઢે") || text.includes("टेढ़े") || text.includes("nibha chuka")) {
-                    return "irregular and misaligned teeth";
-                }
-                if (text.includes("yellow") || text.includes("stain") || text.includes("discolor") || text.includes("bleach") || text.includes("shade") || text.includes("dull") || text.includes("peela") || text.includes("pila")) {
-                    return "teeth discoloration and yellowing";
-                }
-                if (text.includes("chip") || text.includes("broken") || text.includes("crack") || text.includes("broke") || text.includes("punch") || text.includes("toot") || text.includes("bhangi")) {
-                    return "chipped or damaged teeth";
-                }
-                if (text.includes("missing teeth") || text.includes("lost teeth") || text.includes("lost tooth") || text.includes("daant nathi") || text.includes("dant nathi") || text.includes("teeth missing")) {
-                    return "missing teeth";
-                }
-                if (text.includes("wedding") || text.includes("marriage") || text.includes("shaadi") || text.includes("lagna")) {
-                    return "upcoming wedding preparation";
-                }
-                if (text.includes("dukhaavo") || text.includes("dukhavo") || text.includes("dukhado") || text.includes("dukhadho") || text.includes("dukhavu") ||
-                    text.includes("dukhe") || text.includes("dukh") || text.includes("dard") || text.includes("pain") || text.includes("daant ma") || text.includes("dant ma") ||
-                    text.includes("દુખાવો") || text.includes("દુઃખાવો") || text.includes("દાંતમાં દુખાવો")) {
-                    return "pain in teeth";
-                }
-                if (text.includes("cavity") || text.includes("decay") || text.includes("sado") || text.includes("kido") || text.includes("keeda") || text.includes("khado") || text.includes("સડો") || text.includes("કીડો")) {
-                    return "dental cavity and decay";
-                }
-                if (text.includes("pedha") || text.includes("bleeding") || text.includes("swelling") || text.includes("masoda") || text.includes("gum") || text.includes("પેઢા")) {
-                    return "gum bleeding and swelling";
-                }
-                if (text.includes("daant") || text.includes("dant") || text.includes("rog") || text.includes("infection") || text.includes("rct") || text.includes("sensitivity") || text.includes("દાંત")) {
-                    return "pain in teeth";
-                }
-                if (text.includes("smile makeover") || text.includes("smile design") || text.includes("smile improve") || text.includes("smile sudharvi")) {
-                    return "smile makeover and design";
-                }
-            }
-        }
+        // No keyword guessing here: it turned any message containing "dant" (e.g. Odia "Mo danta sidha nahin ...
+        // phanka achhi" = crooked teeth with gaps) into "pain in teeth", which the server then used as the concern.
+        // The concern comes only from the server (what the patient actually said / Riya understood).
         return "";
     }
 
@@ -2787,6 +2741,18 @@
                     if (uTag) activeTag = uTag;
 
                     if (log) log.scrollTop = log.scrollHeight;
+                }
+                else if (data.type === 'review_summary_card') {
+                    // Full appointment summary from the server (Riya speaks only its opening + 'submit / cancel' line).
+                    // Shown as its own message so it never depends on Gemini's lagging speech transcript.
+                    removeBotThinkingIndicator();
+                    // Server text is already clean; keep its line breaks so each detail is on its own line
+                    const cardText = String(data.text || "").replace(/\[(hi|bn|ta|te|mr|gu|kn|ml|pa|or|en)-IN\]/gi, "").trim();
+                    if (cardText) {
+                        logMessage('bot', cardText);
+                        chatHistory.push({ role: "model", parts: [{ text: cardText }] });
+                        saveHistory();
+                    }
                 }
                 else if (data.type === 'bot_text_chunk') {
                     removeBotThinkingIndicator();

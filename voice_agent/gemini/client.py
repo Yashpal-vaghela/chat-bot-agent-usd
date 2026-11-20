@@ -16,6 +16,7 @@ from voice_agent.services.appointment_service import submit_consultation_appoint
 
 from voice_agent.utils.helpers import is_cancel_submit, is_explicit_submit_command, is_affirmative_submit, is_cancel_response_text, is_submit_response_text
 from voice_agent.utils.helpers import is_submit_review_summary, is_valid_indian_mobile, get_review_summary_problem
+from voice_agent.utils.helpers import normalize_mobile, phone_from_user_turns
 
 
 def build_summary_correction_note(problem, bad_phone=""):
@@ -24,6 +25,14 @@ def build_summary_correction_note(problem, bad_phone=""):
     if problem == "phone_invalid":
         ask = (f"The phone number {bad_phone} is NOT a valid Indian mobile number (it must be exactly 10 digits and start with 6, 7, 8 or 9). "
                "Briefly apologise, say that number is not valid, and ask the patient to say their 10-digit mobile number again.")
+    elif problem == "phone_mismatch":
+        said_wrong, _, said_right = (bad_phone or "").partition("|")
+        return (
+            "[BACKEND NOTE - not spoken by the patient. Do not read this note aloud.] "
+            f"Your summary used mobile number {said_wrong}, but the patient said {said_right}. The summary must NOT be submitted. "
+            f"Briefly apologise and recite the COMPLETE review summary again with mobile number {said_right}, ending with the "
+            "full sentence asking the patient to say 'submit' or 'cancel'. Use exactly the same language as your previous reply."
+        )
     elif problem == "phone_unheard":
         ask = (f"The patient never actually said the number {bad_phone} - you may have guessed it. Ask the patient to say "
                "their 10-digit mobile number again slowly. NEVER invent or guess a phone number.")
@@ -52,6 +61,37 @@ def build_summary_correction_note(problem, bad_phone=""):
     )
 
 
+# Voice only, appended LAST to the system prompt so it overrides the shared prompt's Step 6 template and its many
+# "re-recite the full review summary" instructions (those made Riya build the summary herself and only correct the
+# phone number afterwards). The gatekeeper runs BEFORE any summary is spoken.
+VOICE_REVIEW_GATEKEEPER_RULE = (
+    "\n\n=========================================\n"
+    "VOICE REVIEW SUMMARY GATEKEEPER (FINAL RULE - OVERRIDES EVERY OTHER INSTRUCTION ABOVE):\n"
+    "- In this voice call you NEVER compose an appointment review summary yourself. Wherever the instructions above say "
+    "'present', 'recite' or 're-recite' the review summary (Step 6, Step 7, after any update), do this instead: call the "
+    "prepare_review_summary tool FIRST, before you say anything, and then speak ONLY what it returns.\n"
+    "- As soon as the patient says their mobile number (or any number when you asked for it - even if it sounds too long "
+    "or too short), call prepare_review_summary with the number exactly as you heard it, BEFORE replying. Do not judge "
+    "or fix the number yourself; the backend checks it against the patient's own words (exactly 10 digits).\n"
+    "- Pass name and concern as YOU understood them from the patient (you hear the patient directly; the backend's "
+    "speech transcript is often wrong). The concern is the dental problem the patient described - never a yes/no reply.\n"
+    "- status 'ok': speak 'say_exactly' word for word and COMPLETELY, to the last word of the sentence asking to say "
+    "'submit' or 'cancel'. It is deliberately short: do NOT read out the details (they are shown on screen).\n"
+    "- status 'ask_again': speak ONLY 'say_now' - no summary, no details, no submit/cancel line.\n"
+    "- NEVER call prepare_review_summary before the patient has said their mobile number. Before that, follow the normal "
+    "booking steps (concern -> consultation offer -> pincode -> doctor -> mobile number). Call it again only if the patient "
+    "changes a detail AFTER the summary was shown.\n"
+    "=========================================\n"
+    "STAY ON TOPIC (FINAL RULE): you are ONLY Ultimate Smile Design's smile & dental consultant. Talk only about teeth, "
+    "smiles, dental treatments, Ultimate Smile Design and the appointment. If the patient's words are about anything else "
+    "(weather, clouds, rain, vehicles, their business, news, general knowledge...), do NOT explain, discuss or ask "
+    "questions about that topic - not even one sentence. Acknowledge in a few words and bring the talk back, e.g. ask "
+    "whether they have any question about their teeth/smile or the appointment. If you simply did not understand the "
+    "patient (speech is often misheard), politely ask them to repeat - never invent a topic from a misheard word. The "
+    "profession answer gets one short 'thank you' - never follow-up questions about their work."
+)
+
+
 APPOINTMENT_TOOL_DECLARATION = {
     "functionDeclarations": [
         {
@@ -74,8 +114,46 @@ APPOINTMENT_TOOL_DECLARATION = {
             }
         },
         {
+            "name": "prepare_review_summary",
+            "description": "GATEKEEPER - call it ONLY at the last booking step: right after the patient tells you their mobile number (call it even if the number sounds too long or too short), and again if the patient changes a detail AFTER the summary was shown. NEVER call it earlier (not after the name, concern, pincode or doctor) - it must be called BEFORE you speak the appointment review summary. NEVER recite a review summary yourself. The backend checks the mobile number against what the patient actually said and checks every detail. Pass name and concern as YOU understood them from the patient. If status is 'ok', speak 'say_exactly' word for word and COMPLETELY up to the last word of the sentence asking the patient to say submit or cancel; do NOT read out the details (they are shown on screen). If status is 'ask_again', do NOT speak any summary: say ONLY the 'say_now' text and wait.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "phone": {"type": "STRING", "description": "The patient's 10-digit mobile number exactly as you heard it"},
+                    "doctor_name": {"type": "STRING", "description": "The USD doctor the patient chose, or empty if our team should guide them"},
+                    "name": {"type": "STRING", "description": "Patient's name as YOU understood it from the patient (the backend transcript is unreliable), in the patient's language/script"},
+                    "concern": {"type": "STRING", "description": "Patient's dental problem as YOU understood it, short, in the patient's language (e.g. 'દાંતમાં દુખાવો'). It is the problem they described - NEVER a yes/no answer like 'હા' / 'करू ने' / 'ok'"},
+                    "name_english": {"type": "STRING", "description": "The patient's name in English letters (e.g. 'Nikhil'), for the clinic CRM"},
+                    "concern_english": {"type": "STRING", "description": "The same dental problem in short plain English (e.g. 'Tooth pain', 'Gaps between teeth'), for the clinic CRM"}
+                },
+                "required": ["phone"]
+            }
+        },
+        {
+            "name": "find_dentists_in_city",
+            "description": "Finds the USD Authorised Smile Designers in ANOTHER city the patient wants a doctor in (e.g. 'I am going to Bharuch tomorrow, give me a Bharuch doctor'), nearest to the patient's own pincode / travel route first. Call it whenever the patient asks for a doctor in a city other than the one you listed doctors for. It does NOT change the patient's residence city or pincode. Speak the doctors it returns with their clinic city.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "city": {"type": "STRING", "description": "The city the patient wants a doctor in, in English letters (e.g. 'Bharuch')"}
+                },
+                "required": ["city"]
+            }
+        },
+        {
+            "name": "check_doctor",
+            "description": "Only for a DOCTOR'S NAME (for a city name use find_dentists_in_city). Checks whether a doctor the patient names is a USD Authorised Smile Designer (in ANY city - the patient may choose a doctor in another city, e.g. Bharuch while living in Surat). ALWAYS call this when the patient names a doctor that is not one of the nearest doctors you just told them, BEFORE you reply. NEVER say a doctor is not authorised / not ours without calling it - the nearest-doctor list only shows 3 doctors near the pincode, not all of them.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "doctor_name": {"type": "STRING", "description": "The doctor's name as the patient said it, in English letters if you can (e.g. 'Hafsha Saiyed')"}
+                },
+                "required": ["doctor_name"]
+            }
+        },
+        {
             "name": "find_nearest_dentists",
-            "description": "Finds and returns the nearest USD Authorised Smile Designer dentists based on the patient's confirmed 6-digit area pincode. STRICT MANDATE: You are strictly forbidden from calling this tool unless the patient has explicitly and genuinely provided a 6-digit area postal pincode in the conversation. NEVER guess, assume, or auto-pick a pincode from city name! If patient only gave a city, ask for their 6-digit area pincode first.",
+            "description": "Finds and returns the nearest USD Authorised Smile Designer dentists based on the patient's confirmed 6-digit area pincode. STRICT MANDATE: You are strictly forbidden from calling this tool unless the patient has explicitly and genuinely provided a 6-digit area postal pincode in the conversation. NEVER guess, assume, or auto-pick a pincode from city name! If patient only gave a city, ask for their 6-digit area pincode first. As soon as the patient gives a 6-digit pincode you MUST call this tool before replying: NEVER name doctors from memory or from the city list - doctor names (and each doctor's clinic city) may only come from this tool's result (sorted by road distance) or from check_doctor, which verifies any other doctor the patient names. Follow the tool result's 'say_now' / 'say_exactly' texts. A NEW pincode first returns only the area question ('need_city_confirmation'); after the patient answers it (yes), call this tool AGAIN with the same pincode to get the doctor list - never ask the area question twice.",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
@@ -232,7 +310,11 @@ class GeminiClient:
                     elif getattr(self.session, "city_confirm_needed", False) or (getattr(self.session, "pending_pincode", None) and not getattr(self.session, "city_pincode_locked", False)):
                         p_pin = getattr(self.session, "pending_pincode", "") or self.session.booking_slots.get("pincode", "")
                         p_cit = getattr(self.session, "pending_display_city", "") or getattr(self.session, "pending_city", "") or self.session.booking_slots.get("city", "")
-                        active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 3.5 (Confirm City from Pincode ONLY). Pincode {p_pin} is located in {p_cit} area. Ask ONLY this one single question to confirm if they reside in {p_cit} area: 'Based on your pincode {p_pin}, you reside in {p_cit} area, right?'. 🚨 ABSOLUTE PROHIBITION: DO NOT recommend doctors, DO NOT ask doctor guidance, and DO NOT ask for phone number! Output ONLY this single question and wait for the patient to say yes/right!")
+                        if getattr(self.session, "asking_for_field", None) == "city_confirmation":
+                            # Reconnect after the area question was already asked: asking it again started the loop
+                            active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 3.5 done. You ALREADY asked whether the patient lives in {p_cit} (pincode {p_pin}) - NEVER ask that again. If the patient says yes / anything but 'wrong', call find_nearest_dentists with pincode {p_pin} and tell the doctors it returns. Only if they say the area is wrong, ask for their correct 6-digit pincode.")
+                        else:
+                            active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 3.5 (Confirm City from Pincode ONLY). Pincode {p_pin} is located in {p_cit} area. Ask ONLY this one single question to confirm if they reside in {p_cit} area: 'Based on your pincode {p_pin}, you reside in {p_cit} area, right?'. 🚨 ABSOLUTE PROHIBITION: DO NOT recommend doctors, DO NOT ask doctor guidance, and DO NOT ask for phone number! Output ONLY this single question and wait for the patient to say yes/right!")
                     elif getattr(self.session, "is_travel_booking_turn", False) or (getattr(self.session, "travel_destination_city", None) and not self.session.booking_slots.get("doctor_name")):
                         t_dest = getattr(self.session, "travel_destination_city", "") or self.session.booking_slots.get("clinic_city", "")
                         r_cit = self.session.booking_slots.get("city", "")
@@ -244,24 +326,34 @@ class GeminiClient:
                         if getattr(self.session, "recommended_dentists_spoken", False):
                             active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 4 (Doctor Choice Follow-up). The 3 nearest dentist names for pincode {self.session.booking_slots.get('pincode')} have ALREADY been spoken to the patient. 🚨 ABSOLUTE BAN: DO NOT repeat or speak the dentist names again! Ask if they prefer one of those doctors or want clinic team to guide them. If patient says 'no', 'nahi', 'nathi', accept gracefully without asking again!")
                         else:
-                            active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 4 (Doctor Guidance ONLY). Speak the 3 nearest dentist names for pincode {self.session.booking_slots.get('pincode')} and ask if they prefer one or want clinic team to guide them. YOU ARE STRICTLY FORBIDDEN from asking for phone number in Step 4! Wait for their doctor response!")
+                            active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 4 (Doctor Guidance ONLY). Call find_nearest_dentists with pincode {self.session.booking_slots.get('pincode')} and speak the 3 nearest dentist names it returns, each with the doctor's clinic city (never names from memory), and ask if they prefer one or want clinic team to guide them. YOU ARE STRICTLY FORBIDDEN from asking for phone number in Step 4! Wait for their doctor response!")
                     elif not self.session.booking_slots.get("phone"):
                         bad_num = getattr(self.session, 'last_invalid_phone_input', '') or ''
                         if bad_num and len(bad_num) != 10:
                             active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 5 (Phone Number ONLY). Patient provided an INVALID phone number ({bad_num}, {len(bad_num)} digits). An Indian mobile number MUST have exactly 10 digits. Tell them: 'You provided {len(bad_num)} digits ({bad_num}). A valid mobile number has 10 digits. Could you please provide your 10-digit mobile number?'. YOU ARE STRICTLY FORBIDDEN from reciting the review summary!")
                         else:
-                            active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 5 (Phone Number ONLY). Doctor addressed. Ask ONLY for their 10-digit mobile number so clinic team can contact them ('Could you please provide your 10-digit mobile phone number?'). DO NOT recite review summary yet! DO NOT ask to submit yet!")
+                            active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 5 (Phone Number ONLY). Doctor addressed. Ask ONLY for their 10-digit mobile number so clinic team can contact them ('Could you please provide your 10-digit mobile phone number?'). DO NOT recite review summary yet! DO NOT ask to submit yet! When they say it, call prepare_review_summary.")
                     elif not self.session.booking_slots.get("is_submitted"):
-                        active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 6 (Review Summary). Present confirmed details in full 6 lines and ask: 'Please say submit to submit this appointment request to our clinic team, or say cancel to cancel it.'")
+                        active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 6 (Review Summary). Call prepare_review_summary and speak its 'say_exactly' text completely (it ends with: 'Please say submit to submit this appointment request to our clinic team, or say cancel to cancel it.').")
 
                     active_mem.append("- STRICT 10-DIGIT PHONE INTEGRITY: Indian mobile phone numbers have EXACTLY 10 digits AND start with 6, 7, 8 or 9 (e.g. a number starting with 1 or 0 is invalid - ask again). NEVER invent, add, or complete digits to an incomplete phone number (e.g. if the user says 9 digits like '984255299', NEVER add a 10th digit and DO NOT show review summary). If the phone number does not have exactly 10 digits, YOU MUST NOT recite the review summary under ANY circumstances! Tell the user that their number has fewer or more digits and ask for the complete 10-digit number.")
                     if getattr(self.session, "profession_asked", False) or getattr(self.session, "consultation_agreed", False) or self.session.booking_slots.get("pincode") or self.session.booking_slots.get("city"):
-                        active_mem.append("- PROFESSION INQUIRY STRICTLY FORBIDDEN: Profession was already asked or booking flow is active. You are STRICTLY FORBIDDEN from asking 'what is your profession?', 'what do you do for work?', or 'about your work' under ANY circumstance!")
+                        active_mem.append("- PROFESSION INQUIRY FORBIDDEN DURING BOOKING: Do NOT ask 'what is your profession?' while the booking is in progress." + ("" if getattr(self.session, "profession_done", False) else " EXCEPTION (mandatory, once): it has never been asked yet, so right after the appointment is submitted or cancelled, or when the patient declines the consultation/appointment, your reply MUST end with ONLY the profession question."))
                     active_mem.append("- ONE QUESTION PER REPLY (ABSOLUTE): Every reply may contain only ONE question. If you need several things, ask the single most important one now and the next one in a later reply. NEVER combine two asks, for example: name confirmation + dental concern, dental concern + consultation offer, pincode/city confirmation + profession or consultation offer, dentist names + phone number. The profession question is always its own reply.")
                     if active_mem:
                         live_system_prompt += f"\n\n=========================================\nACTIVE PATIENT MEMORY (HIGH PRIORITY OVERRIDE):\n" + "\n".join(active_mem) + "\n========================================="
+                    live_system_prompt += VOICE_REVIEW_GATEKEEPER_RULE
 
                     live_voice = os.getenv("GEMINI_VOICE_NAME") or GEMINI_VOICE_NAME or "Aoede"
+                    # All 11 supported Indian languages (keeps transcription away from Korean/Portuguese/etc.);
+                    # the patient's language, once known (e.g. on a reconnect), goes first
+                    input_lang_codes = [c.strip() for c in os.getenv(
+                        "GEMINI_INPUT_LANGUAGE_CODES",
+                        "en-IN,hi-IN,gu-IN,mr-IN,bn-IN,ta-IN,te-IN,kn-IN,ml-IN,pa-IN,or-IN").split(",") if c.strip()]
+                    known_lang = getattr(self.session, "current_language", None)
+                    if known_lang in input_lang_codes and getattr(self.session, "is_language_established", False):
+                        input_lang_codes.remove(known_lang)
+                        input_lang_codes.insert(0, known_lang)
                     setup_message = {
                         "setup": {
                             "model": live_model,
@@ -292,7 +384,9 @@ class GeminiClient:
                                 "slidingWindow": {}
                             },
                             "outputAudioTranscription": {},
-                            "inputAudioTranscription": {},
+                            # Language hints: with auto-detection the patient's Hindi/Gujarati was transcribed as
+                            # Korean/Portuguese/Spanish, so the backend never read the name or concern
+                            "inputAudioTranscription": {"languageCodes": input_lang_codes} if input_lang_codes else {},
                             "systemInstruction": {"parts": [{"text": live_system_prompt}]}
                         }
                     }
@@ -351,20 +445,46 @@ class GeminiClient:
             return
         bs = self.session.booking_slots
 
-        def _val(v):
+        def _val(v, missing="not given yet"):
             v = str(v or "").strip()
-            return v if v and v.lower() not in ["none", "null", "-", "--"] else "not given yet"
+            return v if v and v.lower() not in ["none", "null", "-", "--"] else missing
 
+        # Name / concern parsed from the speech transcript are often wrong ("करू ने" stored as the concern), so they
+        # are never pushed to Riya as verified: she uses what she understood, unless a summary already fixed them
+        confirmed = getattr(self.session, "last_review_summary_slots", None) or getattr(self.session, "last_consumed_summary_slots", None) or {}
+        heard_self = "use the name/problem exactly as the patient told you in this conversation (you heard them directly); do NOT ask again if already told"
+        from voice_agent.services.dentist_service import get_doctor_city
+        docs = getattr(self.session, "recommended_dentists", None) or []
+        docs_txt = ", ".join(
+            f"{d.get('name')} ({get_doctor_city(d) or d.get('city') or '?'})" for d in docs if d.get("name")
+        )
         summary = (
             "[BACKEND NOTE - not spoken by the patient. Do not reply to this note or read it aloud. "
             "Use these verified booking details; never invent or change them unless the patient says so. "
-            "Remember: ask only ONE question per reply.] "
-            f"Name: {_val(self.session.user_name)} | Concern: {_val(self.session.user_concern or bs.get('message'))} | "
-            f"City: {_val(bs.get('city'))} | Pincode: {_val(bs.get('pincode'))} | "
+            "Remember: ask only ONE question per reply. Stay on teeth / smile / appointment topics only - never discuss or "
+            "ask about unrelated topics (weather, clouds, vehicles, work...); steer back to the patient's smile. NEVER name a doctor that the find_nearest_dentists or check_doctor tool "
+            "did not return; if the patient names another doctor, call check_doctor before answering (never say a doctor is "
+            "not ours without it); if the patient wants a doctor in another city (e.g. travelling to Bharuch), call "
+            "find_dentists_in_city - never answer with the nearest list of their own pincode instead; when you name a doctor, also say the doctor's clinic city. NEVER speak the appointment review "
+            "summary yourself: call prepare_review_summary first and speak its 'say_exactly' text completely.] "
+            f"Name: {_val(confirmed.get('user_name'), heard_self)} | Concern: {_val(confirmed.get('user_concern'), heard_self)} | "
+            f"City: {_val(bs.get('city'), (str(getattr(self.session, 'pending_display_city', '') or getattr(self.session, 'pending_city', '')) + ' (from the pincode; area question already asked - do NOT ask it again; when the patient says yes, call find_nearest_dentists again with the pincode and tell the doctors it returns)') if getattr(self.session, 'pending_city', None) else 'not given yet')} | "
+            f"Pincode: {_val(bs.get('pincode') or getattr(self.session, 'pending_pincode', ''))} | "
             f"Phone: {_val(bs.get('phone')) if is_valid_indian_mobile(bs.get('phone')) else 'not given yet'} | "
+            f"Nearest doctors already told to the patient: {docs_txt or 'none yet'} | "
             f"Doctor: {bs.get('doctor_name') or 'optional - use the doctor the patient chose in the conversation, if any'} | "
             f"Appointment submitted: {'yes' if bs.get('is_submitted') else 'no'}"
         )
+        if getattr(self.session, "profession_done", False):
+            summary += " | Profession question: ALREADY asked - NEVER ask it again (not even after a re-submission)."
+        else:
+            from voice_agent.ai.conversation_manager import profession_question_text
+            summary += (
+                " | Profession question: NOT asked yet. RULE: if the patient declines the consultation/appointment "
+                "(says no / not now / not interested), or right after the appointment is submitted or cancelled, your reply "
+                f"MUST end with ONLY this question in the patient's language: '{profession_question_text(self._voice_lang())}'. "
+                "Do not ask it in the middle of the booking."
+            )
         if summary == getattr(self.session, "last_synced_slot_summary", None):
             return
         try:
@@ -382,7 +502,8 @@ class GeminiClient:
         """A NEW pincode (different from the booked one) means the patient is moving residence: the city must be
         re-confirmed from that pincode before dentists are listed, and after the "yes" both city and pincode change.
         Returns True when it paused the flow for that confirmation."""
-        booked_pin = str(self.session.booking_slots.get("pincode") or "")
+        booked_pin = re.sub(r"\D", "", str(self.session.booking_slots.get("pincode") or ""))
+        pin_val = re.sub(r"\D", "", str(pin_val or ""))
         if not booked_pin or booked_pin == pin_val:
             return False
         self.session.pending_pincode = pin_val
@@ -395,6 +516,432 @@ class GeminiClient:
         self.session.recommended_dentists = []
         print(f"[CITY-CHANGE] New pincode {pin_val} (was {booked_pin}) -> confirming city '{display_city}'")
         return True
+
+    # ---------------------------------------------------------------------------------------------
+    # Nearest-dentist step for voice mode. Chat mode builds the dentist reply on the server
+    # (format_dentists_speech_text: road-distance order + each doctor's clinic city); voice mode
+    # left the wording - and whether to fetch at all - to Gemini, which skipped the list after the
+    # city confirmation, dropped the doctors' cities, or named doctors that were never fetched.
+    # These helpers give Gemini the same server-built sentence chat mode sends.
+    # ---------------------------------------------------------------------------------------------
+    def _voice_lang(self):
+        return getattr(self.session, "current_language", None) or "en-IN"
+
+    @staticmethod
+    def _dentist_entries(dentists):
+        from voice_agent.services.dentist_service import get_doctor_city
+        return [
+            {
+                "name": d.get("name"),
+                "clinic_name": d.get("clinic_name"),
+                "clinic_city": get_doctor_city(d) or d.get("city") or "",
+                "pincode": d.get("pincode"),
+                "address": d.get("address") or "",
+            }
+            for d in dentists
+        ]
+
+    def _dentist_speech(self, dentists, pin_val, offset_val=0, user_city=None, is_update=False, after_city_confirm=False):
+        from voice_agent.services.dentist_service import format_dentists_speech_text
+        return format_dentists_speech_text(
+            dentists, pin_val, self._voice_lang(),
+            is_more=offset_val > 0, is_update=is_update,
+            user_city=user_city or self.session.booking_slots.get("city"),
+            after_city_confirm=after_city_confirm,
+        )
+
+    def _mark_dentists_recommended(self, dentists, pin_val, offset_val):
+        self.session.recommended_dentists = dentists
+        self.session.recommended_dentists_spoken = True
+        self.session.doctor_guidance_asked = True
+        self.session.dentist_page_offset = offset_val
+        self.session.last_recommended_pincode = pin_val
+        self.session.pending_dentists = None
+
+    def _lock_pending_city(self, pin_val=None):
+        """The patient confirmed the area detected from their pincode: make it the booking city."""
+        pin_val = pin_val or getattr(self.session, "pending_pincode", None) or self.session.booking_slots.get("pincode")
+        if getattr(self.session, "pending_city", None):
+            self.session.booking_slots["city"] = self.session.pending_city
+        if pin_val:
+            self.session.booking_slots["pincode"] = pin_val
+        if getattr(self.session, "pending_area", None):
+            self.session.booking_slots["area"] = self.session.pending_area
+        self.session.city_pincode_locked = True
+        self.session.city_manually_confirmed = True
+        self.session.city_confirm_needed = False
+        self.session.pending_city = None
+        self.session.pending_display_city = None
+        self.session.pending_area = None
+        self.session.pending_pincode = None
+        self.session.city_confirm_turn_id = None
+        self.session.asking_for_field = "doctor_selection"
+
+    def _dentist_success_result(self, dentists, total_count, next_offset, pin_val, offset_val, speech):
+        result = {
+            "status": "success",
+            "pincode": pin_val,
+            "city": self.session.booking_slots.get("city") or "",
+            "offset": offset_val,
+            "next_offset": next_offset,
+            "total_found": total_count,
+            "dentists": self._dentist_entries(dentists),
+        }
+        if speech:
+            result["say_exactly"] = speech
+            result["instruction"] = (
+                "Your reply MUST be the 'say_exactly' text, word for word. It already lists the nearest doctors "
+                "(sorted by road distance) together with each doctor's clinic city. Do NOT change, reorder, add or "
+                "drop any doctor name or city, and do NOT add another question. If the patient is speaking a "
+                "different language, translate it faithfully but keep every doctor name and city. "
+                "Do NOT ask for the phone number in this reply."
+            )
+        else:
+            result["instruction"] = (
+                "Speak all doctor names from 'dentists' together with their clinic_city, then ask ONLY whether they "
+                "want one of these doctors or should our team guide them. Do NOT ask for the phone number in this reply."
+            )
+        return result
+
+    # Words for "pincode" in the languages Riya speaks (used to know Riya actually asked for it)
+    PINCODE_WORDS = ("pincode", "pin code", "postal code", "પિનકોડ", "પિન કોડ", "पिनकोड", "पिन कोड", "পিনকোড",
+                     "பின்கோட்", "పిన్‌కోడ్", "పిన్ కోడ్", "ಪಿನ್‌ಕೋಡ್", "ಪಿನ್ ಕೋಡ್", "പിൻകോഡ്", "ਪਿਨਕੋਡ", "ପିନକୋଡ୍")
+
+    @staticmethod
+    def _ascii_digits(text):
+        """Gujarati/Devanagari/other Indic digits -> 0-9, so '૩૮૦૦૦૧' / '३८०००१' match '380001'."""
+        import unicodedata
+        return "".join(str(unicodedata.decimal(c)) if c.isdecimal() else c for c in str(text or ""))
+
+    def _user_said_pincode(self, pin_val):
+        """True when the patient's own words (this turn or an earlier one) contain this pincode."""
+        texts = [getattr(self.session, "current_user_transcription", "") or "",
+                 getattr(self.session, "latest_typed_user_text", "") or ""]
+        texts += [t for role, t in (getattr(self.session, "transcript_history", None) or [])[-12:] if role == "user"]
+        for t in texts:
+            t = self._ascii_digits(t)
+            if pin_val in t or pin_val in re.sub(r"\D", "", t):
+                return True
+        return False
+
+    def track_pincode_request(self, bot_text):
+        """Remember that Riya asked the patient for their pincode (a question without a 6-digit number in it)."""
+        if not bot_text:
+            return
+        low = bot_text.lower()
+        if any(w in low for w in self.PINCODE_WORDS) and not re.search(r"\d{6}", self._ascii_digits(bot_text)):
+            self.session.pincode_asked_by_bot = True
+
+    PHONE_UNHEARD_11 = {
+        "gu": "માફ કરશો, મને તમારો મોબાઇલ નંબર બરાબર સંભળાયો નહીં. શું તમે તમારો 10 અંકનો મોબાઇલ નંબર ફરીથી ધીમેથી જણાવશો?",
+        "hi": "माफ़ कीजिए, मुझे आपका मोबाइल नंबर ठीक से सुनाई नहीं दिया। क्या आप अपना 10 अंकों का मोबाइल नंबर फिर से धीरे-धीरे बताएंगे?",
+        "mr": "माफ करा, मला तुमचा मोबाइल नंबर नीट ऐकू आला नाही. तुमचा 10 अंकी मोबाइल नंबर पुन्हा हळू सांगाल का?",
+        "en": "Sorry, I could not hear your mobile number clearly. Could you please say your 10-digit mobile number again, slowly?",
+    }
+
+    PHONE_NOT_10 = {
+        "gu": "માફ કરશો, તમે જણાવેલા નંબરમાં બરાબર 10 અંક નથી. કૃપા કરીને તમારો 10 અંકનો મોબાઇલ નંબર ફરીથી જણાવશો?",
+        "hi": "माफ़ कीजिए, आपके बताए नंबर में पूरे 10 अंक नहीं हैं। कृपया अपना 10 अंकों का मोबाइल नंबर फिर से बताएंगे?",
+        "mr": "माफ करा, तुम्ही सांगितलेल्या नंबरमध्ये बरोबर 10 अंक नाहीत. कृपया तुमचा 10 अंकी मोबाइल नंबर पुन्हा सांगाल का?",
+        "en": "Sorry, the number you gave does not have exactly 10 digits. Could you please say your 10-digit mobile number again?",
+    }
+
+    def _user_turn_texts(self):
+        """Everything the patient said in this call (transcript turns + the turn in progress)."""
+        said = [t for role, t in (getattr(self.session, "transcript_history", None) or []) if role == "user"]
+        for extra in (getattr(self.session, "current_user_transcription", "") or "",
+                      getattr(self.session, "latest_typed_user_text", "") or ""):
+            if extra and (not said or said[-1] != extra):
+                said.append(extra)
+        return said
+
+    async def prepare_review_summary(self, args):
+        """Server-checked review summary: Riya used to recite a summary with a number she never heard and only
+        afterwards say the number was missing; and she sometimes cut the closing 'say submit or cancel' sentence."""
+        from voice_agent.ai.conversation_manager import build_review_summary_text, get_missing_field_message
+        from voice_agent.services.appointment_service import is_matched_doctor
+        lang = self._voice_lang()[:2].lower()
+        bs = self.session.booking_slots
+
+        def ask(field, say_now=None):
+            self.session.asking_for_field = field
+            self.session.review_prepared_turn = None
+            return {
+                "status": "ask_again",
+                "missing": field,
+                "say_now": say_now or get_missing_field_message(lang, field),
+                "message": "Do NOT speak any review summary. Say ONLY the 'say_now' text and wait for the patient.",
+            }
+
+        # Name and concern: what Riya understood (she hears the audio itself) wins over the backend's parse of the
+        # speech transcript, which is random for Indian languages (the patient's "करू ने" = "yes, do it" was stored
+        # as the concern and recited in the summary)
+        def _arg(key):
+            v = str(args.get(key) or "").strip()
+            return "" if v.lower() in ("none", "null", "-", "--", "not provided", "unknown") else v
+        name = (_arg("name") or self.session.user_name or "").strip()
+        concern = (_arg("concern") or self.session.user_concern or bs.get("message") or "").strip()
+        name_en = _arg("name_english")
+        concern_en = _arg("concern_english")
+
+        # Too early: the gatekeeper is only for the moment the patient has given their mobile number (the last
+        # step). Called right after the concern it answered "pincode missing", so Riya skipped the consultation offer
+        # and kept repeating "before submitting, tell me your pincode".
+        pin_now = "".join(filter(str.isdigit, str(bs.get("pincode") or "")))
+        number_said = phone_from_user_turns(self._user_turn_texts(), pin_now)[0] != "none"
+        if not number_said and not normalize_mobile(bs.get("phone")):
+            print("[REVIEW-SUMMARY] called before the patient gave a mobile number -> not_ready")
+            return {
+                "status": "not_ready",
+                "message": "Ignore this call: the patient has not given their mobile number yet, so there is no summary. "
+                           "Do NOT mention this check and do NOT recite any summary. Simply give the reply you would have given "
+                           "to the patient's last message (if you were telling the nearest doctors, continue that). NEVER repeat "
+                           "a question the patient has already answered (name, concern, consultation, pincode/area confirmation). "
+                           "Call prepare_review_summary only after the patient says their mobile number.",
+            }
+        city = str(bs.get("city") or "").strip()
+        pin = "".join(filter(str.isdigit, str(bs.get("pincode") or "")))
+        # Exactly 10 digits only - never cut a longer number down to 10
+        phone = normalize_mobile(args.get("phone")) or ""
+
+        if not name:
+            return ask("name")
+        if not concern:
+            return ask("concern")
+        if len(pin) != 6:
+            return ask("pincode")
+        if not city:
+            return ask("city")
+        # The patient's own transcript is the source of truth for the number (what the screen shows is what is
+        # submitted). Riya used to invent numbers ('9193862652') or keep 10 digits of a 12-digit answer.
+        said = self._user_turn_texts()
+        status, said_phone = phone_from_user_turns(said, pin)
+        if status == "wrong_length":
+            print(f"[REVIEW-SUMMARY] patient said {said_phone} ({len(said_phone)} digits), not a 10-digit mobile -> asking again")
+            bs["phone"] = ""
+            return ask("phone", self.PHONE_NOT_10.get(lang))
+        if status == "ok":
+            if phone and phone != said_phone:
+                print(f"[REVIEW-SUMMARY] Gemini passed phone {phone}, transcript says {said_phone} -> using the transcript")
+            phone = said_phone
+        else:
+            # Nothing usable in the transcript (spoken digits are often transcribed only partly): fall back to
+            # Gemini's number, but only if 4+ of the patient's digits are inside it (or it is the stored number)
+            if not phone and normalize_mobile(bs.get("phone")):
+                phone = normalize_mobile(bs.get("phone"))
+            if not is_valid_indian_mobile(phone):
+                return ask("phone", self.PHONE_UNHEARD_11.get(lang))
+            said_digits = [re.sub(r"\D", "", self._ascii_digits(t)) for t in said]
+            heard = phone == normalize_mobile(bs.get("phone")) or \
+                any(phone in d or (len(d) >= 4 and d in phone) for d in said_digits)
+            if not heard:
+                print(f"[REVIEW-SUMMARY] phone {phone} was never said by the patient -> asking again")
+                return ask("phone", self.PHONE_UNHEARD_11.get(lang))
+        if not is_valid_indian_mobile(phone):
+            return ask("phone", self.PHONE_NOT_10.get(lang))
+
+        doctor = str(args.get("doctor_name") or bs.get("doctor_name") or "").strip()
+        if doctor:
+            doctor = is_matched_doctor(doctor, city=None) or ""
+        is_update = bool(bs.get("is_submitted") or bs.get("submission_id"))
+        text = build_review_summary_text(lang, name, phone, city, pin, concern, doctor, is_update=is_update)
+
+        # The CRM gets Riya's English version when she gives one (otherwise the service transliterates)
+        crm_parts = (name_en or name).split()
+        crm_message = concern_en or concern
+        self.session.user_name = name
+        self.session.user_concern = concern
+        bs["phone"] = phone
+        bs["doctor_name"] = doctor
+        bs["message"] = crm_message
+        self.session.last_review_summary_slots = {
+            "first_name": crm_parts[0], "last_name": " ".join(crm_parts[1:]) if len(crm_parts) > 1 else "-",
+            "user_name": name_en or name,
+            "phone": phone, "city": city, "pincode": pin, "message": crm_message, "user_concern": crm_message,
+            "doctor_name": doctor,
+        }
+        # Spoken: only the opening and the closing 'submit / cancel' sentence. A ~25 s recital of every detail was
+        # often cut off before the closing sentence (echo / noise barge-in stops the rest of the audio). The full
+        # summary with every detail is shown on screen and saved in the transcript (see the turn-complete handler).
+        spoken, _ = self._short_spoken_summary(text)
+        self.session.last_review_summary_text = text
+        self.session.review_prepared_turn = self.session.current_voice_turn_id
+        self.session.asking_for_field = None
+        print(f"[REVIEW-SUMMARY] ok: name={name!r} concern={concern!r} crm_message={crm_message!r} phone={phone}")
+        # Show the full summary on screen right now. Gemini's own speech transcript lags behind the audio and was
+        # sometimes cut to just "Sure!", so the patient never saw the details (and had to ask for them).
+        self.session.pending_summary_card = text
+        try:
+            await self.send_json({"type": "review_summary_card", "text": text, "turnId": self.session.current_voice_turn_id})
+        except Exception as e:
+            print(f"[WARN] Could not send review summary card: {e}")
+        return {
+            "status": "ok",
+            "say_exactly": spoken,
+            "instruction": "Speak 'say_exactly' word for word and COMPLETELY, to the very last word of the sentence asking "
+                           "the patient to say 'submit' or 'cancel'. Do NOT read out the details (name, phone, city, pincode, "
+                           "concern, doctor) - the full summary is shown to the patient on screen automatically. Do not add "
+                           "anything else and do not ask another question.",
+        }
+
+    @staticmethod
+    def _known_city(text):
+        """The canonical USD city named in `text` ('Bharuch', 'ભરૂચ', 'भरूच', 'bharuch ma'), else ''."""
+        from voice_agent.ai.conversation_manager import CITY_DOCTORS
+        from voice_agent.services.appointment_service import transliterate_to_english
+        from voice_agent.utils.helpers import MULTILINGUAL_CITY_MAP
+        raw = str(text or "").strip()
+        if not raw:
+            return ""
+        low = raw.lower()
+        for alias, city in MULTILINGUAL_CITY_MAP.items():
+            # Native-script names ('ભરૂચ' / 'भरूच') do not transliterate to the English spelling
+            if city not in CITY_DOCTORS:
+                continue
+            a = alias.lower()
+            hit = re.search(r"\b" + re.escape(a) + r"\b", low) if a.isascii() else (a in low)
+            if hit:
+                return city
+        cands = [low]
+        if any(ord(ch) > 127 for ch in raw):
+            cands.append(transliterate_to_english(raw).lower())
+        for cand in cands:
+            cand = re.sub(r"[^a-z ]", " ", cand)
+            for city in CITY_DOCTORS:
+                if re.search(r"\b" + re.escape(city.lower()) + r"\b", cand):
+                    return city
+        return ""
+
+    def find_dentists_in_city(self, args):
+        """Doctors in another city the patient asked for (travel), nearest to their pincode / route first. The
+        patient's residence city and pincode stay as they are. Chat mode already did this; voice only knew the
+        nearest list of the patient's own pincode, so 'give me a Bharuch doctor' got Surat doctors again."""
+        from voice_agent.ai.conversation_manager import CITY_DOCTORS
+        from voice_agent.services.dentist_service import get_nearest_dentists_for_travel, get_doctor_city
+        city = self._known_city(args.get("city")) or str(args.get("city") or "").strip().title()
+        bs = self.session.booking_slots
+        dentists = []
+        try:
+            dentists = get_nearest_dentists_for_travel(bs.get("pincode") or "", bs.get("city") or "", city) or []
+        except Exception as e:
+            print(f"[WARN] find_dentists_in_city failed for {city}: {e}")
+        if not dentists and city in CITY_DOCTORS:
+            dentists = [{"name": n, "city": city} for n in CITY_DOCTORS[city]]
+        entries = [{"name": d.get("name"), "clinic_city": get_doctor_city(d) or d.get("city") or ""} for d in dentists]
+        in_city = [e for e in entries if e["clinic_city"].lower() == city.lower()]
+        if not in_city:
+            # No USD doctor in that city: the lookup returns the nearest ones elsewhere - never present them as "in" it
+            nearest = entries[:3]
+            if nearest:
+                self._mark_dentists_recommended(dentists[:3], bs.get("pincode") or "", 0)
+            return {
+                "status": "none_in_city",
+                "city": city,
+                "nearest_elsewhere": nearest,
+                "message": f"There is no USD Authorised Smile Designer in {city}. Say that in one short sentence"
+                           + (", then name the nearest ones from 'nearest_elsewhere' WITH their clinic city" if nearest else "")
+                           + ", and ask whether the patient would like one of them or a doctor near their own pincode. "
+                             "Do NOT invent doctors and do NOT change the patient's own city or pincode.",
+            }
+        entries = in_city[:3]
+        self._mark_dentists_recommended([d for d in dentists if d.get("name") in {e["name"] for e in entries}],
+                                        bs.get("pincode") or "", 0)
+        return {
+            "status": "ok",
+            "city": city,
+            "dentists": entries,
+            "message": f"Tell the patient the USD Authorised Smile Designer(s) in {city} (nearest to them first), each with "
+                       "the clinic city, and ask whether they would like to consult one of them. Do NOT change or re-confirm "
+                       "the patient's own city or pincode. One question only.",
+        }
+
+    def check_doctor(self, args):
+        """Any USD Authorised doctor in any city. Gemini only knew the 3 nearest doctors of the pincode, so when the
+        patient asked for Dr. Hafsha Saiyed (Bharuch) while living in Surat, Riya said she was not a USD designer."""
+        from voice_agent.services.appointment_service import is_matched_doctor
+        from voice_agent.services.dentist_service import get_doctor_city
+        from voice_agent.ai.conversation_manager import find_doctor_in_text
+        raw = str(args.get("doctor_name") or "").strip()
+        # A city is not a doctor: 'Bharuch' was loosely matched to 'Dr. Bharat R. Patel'
+        if self._known_city(raw) and not re.search(r"\bdr\b|doctor|ડૉ|ડો\.|डॉ", raw, re.IGNORECASE):
+            return self.find_dentists_in_city({"city": raw})
+        doc = is_matched_doctor(raw, city=None) if raw else ""
+        if not doc:
+            # Gemini's spelling may be off: also try the patient's own last words
+            for t in reversed(self._user_turn_texts()[-2:]):
+                try:
+                    doc = find_doctor_in_text(t, None) or ""
+                except Exception:
+                    doc = ""
+                if doc:
+                    break
+        if not doc:
+            return {
+                "status": "not_found",
+                "message": "No USD Authorised Smile Designer with that name was found - the name may have been misheard. "
+                           "Politely ask the patient to say the doctor's name again (or the clinic city). Do NOT say the doctor "
+                           "is not genuine, and do NOT repeat the earlier list unless the patient asks for it.",
+            }
+        clinic_city = get_doctor_city(doc) or ""
+        bs = self.session.booking_slots
+        if bs.get("doctor_name") != doc:
+            bs["doctor_name"] = doc
+            if bs.get("is_submitted") or bs.get("submission_id"):
+                # A change after submission: the patient must re-confirm the updated summary
+                bs["is_submitted"] = False
+                self.session.slots_edited_after_submit = True
+        return {
+            "status": "authorised",
+            "doctor_name": doc,
+            "clinic_city": clinic_city,
+            "message": f"YES - {doc} is a USD Authorised Smile Designer (clinic in {clinic_city}). Patients may choose any "
+                       "authorised doctor, also in another city. Confirm the choice in one short sentence (say the clinic city), "
+                       "then continue: if the review summary was already shown or the appointment was already submitted, call "
+                       "prepare_review_summary for the updated summary; otherwise ask only the next missing detail.",
+        }
+
+    @staticmethod
+    def _short_spoken_summary(text):
+        """(spoken text, closing sentence): the summary's opening line + its closing 'submit / cancel' sentence."""
+        lines = [l.strip() for l in str(text or "").splitlines() if l.strip()]
+        if len(lines) < 3:
+            return text, (lines[-1] if lines else "")
+        opener = lines[0]
+        if re.search(r"[:：]\s*$", opener):
+            # "...અપડેટ કરી દીધી છે. તમારી અપડેટ કરેલી વિગતો:" -> drop the dangling "your details:" lead-in when a
+            # full sentence (ending in . or ।) precedes it; otherwise end the line as a sentence
+            m = re.match(r"^(.*[.।])\s+[^.।!?]+[:：]\s*$", opener)
+            if m:
+                opener = m.group(1)
+            else:
+                stop = "।" if re.search(r"[ऀ-ॿ]", opener) else "."
+                opener = re.sub(r"\s*[:：]\s*$", stop, opener)
+        return f"{opener} {lines[-1]}", lines[-1]
+
+    def sync_pending_dentists_after_turn(self, bot_text):
+        """After Gemini's turn: if it spoke the dentist list prepared during the city confirmation, the patient
+        did not reject the area, so lock the city and record the dentists as recommended (as chat mode does)."""
+        pending = getattr(self.session, "pending_dentists", None)
+        if not pending or not bot_text:
+            return
+        low = bot_text.lower()
+        # Gemini's speech transcript is often cut off ("તમારા પિનકોડ 394130 મુજબ, તમારા સૌથી નજીકના"), so the word
+        # "nearest" is enough; the area question ("... વિસ્તારમાં રહો છો, બરાબર ને?") never contains it
+        nearest_words = ("nearest", "નજીકના", "નજીકની", "नज़दीकी", "नजदीकी", "नजीकचे", "जवळचे", "ନିକଟତମ", "নিকটতম",
+                         "அருகிலுள்ள", "సమీప", "ಹತ್ತಿರದ", "അടുത്തുള്ള", "ਨੇੜਲੇ")
+        spoke_list = "smile designer" in low or any(w in low for w in nearest_words) or any(
+            (d.get("name") or "").split()[-1].lower() in low for d in pending if (d.get("name") or "").split()
+        )
+        if not spoke_list:
+            return
+        pin_val = getattr(self.session, "pending_dentists_pincode", None) or self.session.booking_slots.get("pincode")
+        # A rejected area clears pending_city, so a pending city for this same pincode means it was not rejected
+        # (city_confirm_needed / asking_for_field are not reliable here: other slot parsing overwrites them)
+        if getattr(self.session, "pending_city", None) and str(getattr(self.session, "pending_pincode", "") or "") == str(pin_val or ""):
+            self._lock_pending_city(pin_val)
+            print(f"[INFO] Voice city confirmed via dentist list: {pin_val} -> {self.session.booking_slots.get('city')}")
+        self._mark_dentists_recommended(pending, pin_val, 0)
+        print(f"[INFO] Voice dentists recommended for {pin_val}: {[d.get('name') for d in pending]}")
 
     def consume_review_summary(self):
         """A summary is good for exactly one submission. Afterwards neither a stray "yes" nor a later "book it" may
@@ -465,7 +1012,7 @@ class GeminiClient:
                         # Show "Riya is submitting / cancelling / checking" so the pause during the lookup is explained
                         if func_name == "submit_appointment_booking":
                             await self.send_json({"type": "status_update", "status": "cancelling" if args.get("is_cancel") else "submitting"})
-                        elif func_name == "find_nearest_dentists":
+                        elif func_name in ("find_nearest_dentists", "prepare_review_summary", "check_doctor", "find_dentists_in_city"):
                             await self.send_json({"type": "status_update", "status": "checking"})
                         if func_name == "submit_appointment_booking":
                             # ⚡ The last VALID review summary the patient heard is the source of truth ⚡
@@ -597,7 +1144,14 @@ class GeminiClient:
                             f_msg = bool(full_args.get('message') and len(full_args['message'].strip()) >= 2 and full_args['message'].lower() not in ['none', 'null', 'dental consultation appointment request', ''])
                             f_phone = is_valid_indian_mobile(full_args.get('phone'))
 
-                            if not f_cancel and not sum_slots:
+                            # Already submitted and unchanged (e.g. the patient only ASKED 'is my appointment submitted?'):
+                            # the consumed summary used to make this answer 'NOT submitted' and re-recite the summary
+                            submitted_unchanged = bool(self.session.booking_slots.get("is_submitted")) and not bool(self.session.booking_slots.get("is_cancel")) \
+                                and not getattr(self.session, "slots_edited_after_submit", False)
+                            if not f_cancel and submitted_unchanged:
+                                print("[GUARD] submit_appointment_booking on an already submitted, unchanged appointment -> already_submitted")
+                                result = {"status": "already_submitted", "message": "This appointment request is ALREADY successfully submitted and nothing has changed since. Do NOT submit again, do NOT say it is not submitted and do NOT recite the summary. Tell the patient in one short sentence that their appointment request is already submitted and our team will contact them soon."}
+                            elif not f_cancel and not sum_slots:
                                 print("[GUARD] Gemini Live attempted submit_appointment_booking without a valid review summary. Blocking.")
                                 result = {
                                     "status": "waiting_confirmation",
@@ -630,6 +1184,17 @@ class GeminiClient:
                                 }
                             else:
                                 result = await submit_consultation_appointment(full_args)
+                            if result.get("status") == "success" and not getattr(self.session, "profession_done", False):
+                                from voice_agent.ai.conversation_manager import profession_question_text
+                                result = dict(result)
+                                result["next_step"] = (
+                                    "Tell the patient the result in one short sentence, then end your reply with ONLY this "
+                                    f"question, in the patient's language: '{profession_question_text(self._voice_lang())}'"
+                                )
+                            elif result.get("status") == "success":
+                                result = dict(result)
+                                result["next_step"] = ("Tell the patient the result in one short sentence. Do NOT ask about their "
+                                                       "profession - it was already asked earlier in this conversation.")
                             if result.get("status") == "success":
                                 self.session.booking_slots["is_submitted"] = True
                                 self.session.slots_edited_after_submit = False
@@ -651,9 +1216,11 @@ class GeminiClient:
                                         self.session.booking_slots["api_id"] = result["details"]["api_id"]
                                 for k, v in full_args.items():
                                     if v is not None:
-                                        if isinstance(v, bool):
+                                        if k in ('is_submitted', 'is_cancel', 'is_update'):
+                                            pass  # set from the backend result above; this pre-submit copy (is_submitted=False) must not undo it
+                                        elif isinstance(v, bool):
                                             self.session.booking_slots[k] = v
-                                        elif k not in ['is_submitted', 'is_cancel', 'is_update']:
+                                        else:
                                             self.session.booking_slots[k] = str(v)
                                 await self.send_json({
                                     "type": "sync_slots",
@@ -668,90 +1235,91 @@ class GeminiClient:
                             pin_val = str(args.get("pincode") or "").strip()
                             if not pin_val and self.session.booking_slots.get("pincode"):
                                 pin_val = self.session.booking_slots.get("pincode")
+                            try:
+                                offset_val = int(args.get("offset") or 0)
+                            except (TypeError, ValueError):
+                                offset_val = 0
 
                             actual_pincode = self.session.booking_slots.get("pincode", "")
                             curr_u_text = str(getattr(self.session, "current_user_transcription", "") or "")
                             latest_typed = str(getattr(self.session, "latest_typed_user_text", "") or "")
-                            user_spoke_pin = bool(pin_val and len(pin_val) == 6 and pin_val.isdigit() and (pin_val in curr_u_text or pin_val in latest_typed))
+                            # Gemini passes the pincode the way the patient said it ("39 41 30", "394-130"): digits only.
+                            # With the spaces it looked like a NEW pincode and the area question was asked again and again.
+                            pin_val = re.sub(r"\D", "", self._ascii_digits(pin_val))
+                            said_pin = bool(pin_val) and self._user_said_pincode(pin_val)
+                            user_spoke_pin = bool(pin_val and len(pin_val) == 6 and pin_val.isdigit() and said_pin)
 
-                            from voice_agent.services.dentist_service import validate_pincode_online, get_pincode_city_info
+                            # Gemini invented pincodes (380001 / 390001) right after the concern and started the
+                            # booking. Accept a pincode only if the patient said it, Riya asked for it (the transcript
+                            # can garble the digits), or it is the booking's / pending pincode already.
+                            known_pins = {str(actual_pincode or ""), str(getattr(self.session, "pending_pincode", "") or "")}
+                            if pin_val and pin_val not in known_pins and not said_pin and not getattr(self.session, "pincode_asked_by_bot", False):
+                                print(f"[GUARD] Gemini Live invented pincode '{pin_val}' (patient never said it, Riya never asked). Rejected.")
+                                function_responses.append({
+                                    "name": func_name,
+                                    "id": func_id,
+                                    "response": {"result": {
+                                        "status": "pincode_not_given",
+                                        "message": (
+                                            f"REJECTED: the patient has NOT told you any pincode - '{pin_val}' was invented. Do NOT use it and do "
+                                            "NOT name any city, area or doctor. Continue the normal flow from where it is: acknowledge the "
+                                            "patient's dental concern if you have not yet, then ask whether they would like to book a "
+                                            "consultation; only after they agree, ask ONLY for their 6-digit area pincode. Ask one question only."
+                                        )
+                                    }}
+                                })
+                                continue
+
+                            from voice_agent.services.dentist_service import validate_pincode_online, get_pincode_city_info, get_nearest_dentists, format_city_confirm_speech
                             is_valid_pin, detected_pin_city, pin_err = await asyncio.to_thread(validate_pincode_online, pin_val)
                             city_info = (await asyncio.to_thread(get_pincode_city_info, pin_val)) if is_valid_pin else {}
                             canonical_city = city_info.get("canonical_city") or detected_pin_city or ""
                             display_city = city_info.get("display_city") or detected_pin_city or ""
                             sub_area = city_info.get("area") or ""
 
+                            needs_city_confirmation = False
+                            area_just_confirmed = False
+                            # The area question for THIS pincode is already pending: a call in a LATER turn is the
+                            # second call, made after the patient answered it -> lock the area and list the doctors.
+                            # It must never ask the area question again (that was the "Sayan vistaar" loop; the
+                            # residence-change check below re-asked it on every call while the old pincode was booked).
+                            pending_same_pin = bool(getattr(self.session, "pending_city", None)) and \
+                                str(getattr(self.session, "pending_pincode", "") or "") == pin_val
+                            asked_turn = getattr(self.session, "city_confirm_turn_id", None)
+                            waiting_for_answer = False
                             if not is_valid_pin:
                                 print(f"[WARN] Gemini Live attempted find_nearest_dentists with invalid/unregistered pincode '{pin_val}': {pin_err}")
-                                function_responses.append({
-                                    "name": func_name,
-                                    "id": func_id,
-                                    "response": {
-                                        "result": {
-                                            "status": "error",
-                                            "message": f"Pincode '{pin_val}' is invalid or not found in India Post records! You MUST NOT accept it! Tell the patient that pincode {pin_val} was not found in postal records, and ask for their correct 6-digit area pincode."
-                                        }
-                                    }
-                                })
+                                result = {
+                                    "status": "error",
+                                    "message": f"Pincode '{pin_val}' is invalid or not found in India Post records! You MUST NOT accept it and you MUST NOT name any doctor. Tell the patient that pincode {pin_val} was not found in postal records, and ask for their correct 6-digit area pincode."
+                                }
+                            elif pending_same_pin and asked_turn is not None and asked_turn == self.session.current_voice_turn_id:
+                                # Called again in the same reply, before the patient could answer
+                                print(f"[INFO] find_nearest_dentists called again before the patient answered the area question ({pin_val})")
+                                waiting_for_answer = True
+                                result = {
+                                    "status": "wait_for_patient",
+                                    "message": "The patient has NOT answered the area question yet. Do not call this tool again now and do "
+                                               "not name any doctor. If you have not asked it yet, ask ONLY the area question, then wait.",
+                                }
+                            elif pending_same_pin and asked_turn is not None:
+                                is_change = bool(actual_pincode and actual_pincode != pin_val)
+                                self._lock_pending_city(pin_val)
+                                if is_change:
+                                    self.session.recommended_dentists = []
+                                    if self.session.booking_slots.get("submission_id") or getattr(self.session, "submitted_lead_id", None):
+                                        self.session.slots_edited_after_submit = True
+                                        self.session.booking_slots["is_submitted"] = False
+                                area_just_confirmed = True
+                                print(f"[INFO] Gemini Live find_nearest_dentists area confirmed by patient: {pin_val} -> {self.session.booking_slots.get('city')}")
                             elif self.begin_residence_change(pin_val, canonical_city, display_city, sub_area):
-                                function_responses.append({
-                                    "name": func_name,
-                                    "id": func_id,
-                                    "response": {
-                                        "result": {
-                                            "status": "need_city_confirmation",
-                                            "pincode": pin_val,
-                                            "detected_city": display_city,
-                                            "message": f"The patient is CHANGING their pincode. Say ONLY: 'Based on your pincode {pin_val}, you reside in {display_city} area, right?' and wait. Do NOT name doctors yet. After the patient says yes, call find_nearest_dentists again with {pin_val}; the city in the summary becomes {display_city}."
-                                        }
-                                    }
-                                })
+                                needs_city_confirmation = True
                             elif not getattr(self.session, "city_pincode_locked", False) and not self.session.booking_slots.get("city"):
                                 if getattr(self.session, "pending_city", None) and (not user_spoke_pin or getattr(self.session, "pending_pincode", "") == pin_val):
-                                    self.session.booking_slots["city"] = self.session.pending_city
-                                    self.session.booking_slots["pincode"] = pin_val
-                                    if getattr(self.session, "pending_area", None):
-                                        self.session.booking_slots["area"] = self.session.pending_area
-                                    self.session.city_pincode_locked = True
-                                    self.session.city_confirm_needed = False
-                                    self.session.pending_city = None
-                                    self.session.pending_display_city = None
-                                    self.session.pending_area = None
-                                    self.session.pending_pincode = None
-                                    self.session.asking_for_field = "doctor_selection"
+                                    # Second call after the patient confirmed the area
+                                    self._lock_pending_city(pin_val)
+                                    area_just_confirmed = True
                                     print(f"[INFO] Gemini Live find_nearest_dentists city confirmed: {pin_val} -> {self.session.booking_slots['city']}")
-                                    offset_val = int(args.get("offset") or 0)
-                                    from voice_agent.services.dentist_service import get_nearest_dentists
-                                    dentists_slice, total_count, next_offset = await asyncio.to_thread(get_nearest_dentists, pin_val, offset_val, 3)
-                                    self.session.recommended_dentists = dentists_slice
-                                    self.session.recommended_dentists_spoken = True
-                                    self.session.doctor_guidance_asked = True
-                                    self.session.dentist_page_offset = offset_val
-                                    self.session.last_recommended_pincode = pin_val
-                                    function_responses.append({
-                                        "name": func_name,
-                                        "id": func_id,
-                                        "response": {
-                                            "result": {
-                                                "status": "success",
-                                                "pincode": pin_val,
-                                                "city": self.session.booking_slots["city"],
-                                                "offset": offset_val,
-                                                "next_offset": next_offset,
-                                                "total_found": total_count,
-                                                "dentists": [
-                                                    {
-                                                        "name": d.get("name"),
-                                                        "clinic_name": d.get("clinic_name"),
-                                                        "city": d.get("city") or d.get("clinic_city") or "",
-                                                        "pincode": d.get("pincode"),
-                                                        "address": d.get("address", "")
-                                                    } for d in dentists_slice
-                                                ],
-                                                "instruction": "Speak ALL 3 doctor names aloud to the patient! Since cities like Vadodara have 2 authorised doctors (Dr. Khushbu Patel and Dr. Kaveena Parikh), the 3rd doctor is in nearby adjacent hub (e.g. Dr. Jigar P. Thakkar in nearby Ahmedabad). Always speak all 3 doctor names aloud! Then ask ONLY ONE question: do they want one of these doctors, or should our team guide them? Do NOT ask for the phone number in this reply."
-                                            }
-                                        }
-                                    })
                                 else:
                                     self.session.pending_pincode = pin_val
                                     self.session.pending_city = canonical_city
@@ -759,54 +1327,56 @@ class GeminiClient:
                                     self.session.pending_area = sub_area
                                     self.session.city_confirm_needed = True
                                     self.session.asking_for_field = "city_confirmation"
-                                    print(f"[INFO] Gemini Live find_nearest_dentists paused for city confirmation: {pin_val} -> {display_city} (canonical: {canonical_city})")
-                                    function_responses.append({
-                                        "name": func_name,
-                                        "id": func_id,
-                                        "response": {
-                                            "result": {
-                                                "status": "need_city_confirmation",
-                                                "pincode": pin_val,
-                                                "detected_city": display_city,
-                                                "canonical_city": canonical_city,
-                                                "message": f"CRITICAL: Say ONLY: 'Based on your pincode {pin_val}, you reside in {display_city} area, right?'. 🚨 STRICT BAN: DO NOT name any doctors! DO NOT ask doctor guidance! DO NOT ask for phone number! Output ONLY this single question and stop speaking immediately."
-                                            }
-                                        }
-                                    })
+                                    needs_city_confirmation = True
+                            elif user_spoke_pin and not actual_pincode:
+                                self.session.booking_slots["pincode"] = pin_val
+
+                            if not is_valid_pin or waiting_for_answer:
+                                pass
+                            elif needs_city_confirmation:
+                                # Two separate calls: this one returns ONLY the area question. Giving Gemini the area
+                                # question and the doctor list in one result made it speak the area question again
+                                # after the patient's "yes" (over and over). The doctor list comes from the second call.
+                                self.session.city_confirm_turn_id = self.session.current_voice_turn_id
+                                self.session.pending_dentists = None
+                                confirm_text = format_city_confirm_speech(pin_val, display_city, self._voice_lang())
+                                print(f"[INFO] Gemini Live find_nearest_dentists paused for city confirmation: {pin_val} -> {display_city} (canonical: {canonical_city})")
+                                result = {
+                                    "status": "need_city_confirmation",
+                                    "pincode": pin_val,
+                                    "detected_city": display_city,
+                                    "say_now": confirm_text,
+                                    "message": (
+                                        "Say ONLY the 'say_now' text (the area question) and stop. Do NOT name any doctor and do NOT ask anything else. "
+                                        "This area question is asked ONLY ONCE. When the patient answers yes / haan / ha / barabar / right / correct "
+                                        f"(or anything that does not say the area is wrong), call find_nearest_dentists again with pincode {pin_val} "
+                                        "BEFORE you reply, and speak the doctor list it returns - NEVER ask the area question again. "
+                                        "Only if the patient says the area is wrong, ask for their correct 6-digit pincode."
+                                    ),
+                                }
                             else:
-                                if user_spoke_pin and not actual_pincode:
-                                    self.session.booking_slots["pincode"] = pin_val
-                                offset_val = int(args.get("offset") or 0)
-                                from voice_agent.services.dentist_service import get_nearest_dentists
                                 dentists_slice, total_count, next_offset = await asyncio.to_thread(get_nearest_dentists, pin_val, offset_val, 3)
-                                self.session.recommended_dentists = dentists_slice
-                                self.session.recommended_dentists_spoken = True
-                                self.session.doctor_guidance_asked = True
-                                self.session.dentist_page_offset = offset_val
-                                self.session.last_recommended_pincode = pin_val
-                                function_responses.append({
-                                    "name": func_name,
-                                    "id": func_id,
-                                    "response": {
-                                        "result": {
-                                            "status": "success",
-                                            "pincode": pin_val,
-                                            "offset": offset_val,
-                                            "next_offset": next_offset,
-                                            "total_found": total_count,
-                                            "dentists": [
-                                                {
-                                                    "name": d.get("name"),
-                                                    "clinic_name": d.get("clinic_name"),
-                                                    "city": d.get("city") or d.get("clinic_city") or "",
-                                                    "pincode": d.get("pincode"),
-                                                    "address": d.get("address")
-                                                } for d in dentists_slice
-                                            ],
-                                            "instruction": "Speak ALL 3 doctor names aloud to the patient! Since cities like Vadodara have 2 authorised doctors (Dr. Khushbu Patel and Dr. Kaveena Parikh), the 3rd doctor is in nearby adjacent hub (e.g. Dr. Jigar P. Thakkar in nearby Ahmedabad). Always speak all 3 doctor names aloud! Then ask ONLY ONE question: do they want one of these doctors, or should our team guide them? Do NOT ask for the phone number in this reply."
-                                        }
-                                    }
-                                })
+                                self._mark_dentists_recommended(dentists_slice, pin_val, offset_val)
+                                speech = self._dentist_speech(dentists_slice, pin_val, offset_val, after_city_confirm=area_just_confirmed)
+                                print(f"[INFO] Gemini Live find_nearest_dentists for {pin_val} (offset {offset_val}): {[d.get('name') for d in dentists_slice]}")
+                                result = self._dentist_success_result(dentists_slice, total_count, next_offset, pin_val, offset_val, speech)
+                            function_responses.append({
+                                "name": func_name,
+                                "id": func_id,
+                                "response": {"result": result}
+                            })
+                        elif func_name == "prepare_review_summary":
+                            result = await self.prepare_review_summary(args)
+                            print(f"[INFO] prepare_review_summary -> {result.get('status')} {result.get('missing') or ''}")
+                            function_responses.append({"name": func_name, "id": func_id, "response": {"result": result}})
+                        elif func_name == "find_dentists_in_city":
+                            result = await asyncio.to_thread(self.find_dentists_in_city, args)
+                            print(f"[INFO] find_dentists_in_city {args.get('city')!r} -> {result.get('status')} {[d.get('name') for d in result.get('dentists', [])]}")
+                            function_responses.append({"name": func_name, "id": func_id, "response": {"result": result}})
+                        elif func_name == "check_doctor":
+                            result = await asyncio.to_thread(self.check_doctor, args)
+                            print(f"[INFO] check_doctor {args.get('doctor_name')!r} -> {result.get('status')} {result.get('doctor_name') or ''}")
+                            function_responses.append({"name": func_name, "id": func_id, "response": {"result": result}})
                         else:
                             function_responses.append({
                                 "name": func_name,
@@ -864,6 +1434,9 @@ class GeminiClient:
                     if bot_chunk:
                         self.session.full_bot_reply += bot_chunk
                         self.session.display_str += bot_chunk
+                        # The summary card is already on screen; Riya's spoken short version of it is not shown again
+                        if getattr(self.session, "pending_summary_card", ""):
+                            bot_chunk = ""
                         
                         # Update conversation language based on the bot's tag
                         lang_match = re.search(r"\[(hi|bn|ta|te|mr|gu|kn|ml|pa|or|en)-IN\]", self.session.full_bot_reply, re.IGNORECASE)
@@ -879,13 +1452,14 @@ class GeminiClient:
                                 self.session.current_language = f"{detected_bot_lang}-IN"
                                 self.session.is_language_established = True
                             
-                        best_tag = detect_best_tag(self.session.latest_typed_user_text, self.session.display_str)
-                        await self.send_json({
-                            "type": "bot_text_chunk",
-                            "text": bot_chunk,
-                            "tag": best_tag,
-                            "turnId": self.session.current_voice_turn_id
-                        })
+                        if bot_chunk:
+                            best_tag = detect_best_tag(self.session.latest_typed_user_text, self.session.display_str)
+                            await self.send_json({
+                                "type": "bot_text_chunk",
+                                "text": bot_chunk,
+                                "tag": best_tag,
+                                "turnId": self.session.current_voice_turn_id
+                            })
 
                 if "inputTranscription" in server_content:
                     raw_user_chunk = server_content["inputTranscription"].get("text", "")
@@ -1046,7 +1620,14 @@ class GeminiClient:
                                 f_msg = bool(full_args.get('message') and len(full_args['message'].strip()) >= 2 and full_args['message'].lower() not in ['none', 'null', 'dental consultation appointment request', ''])
                                 f_phone = is_valid_indian_mobile(full_args.get('phone'))
 
-                                if not f_cancel and not sum_slots:
+                                # Already submitted and unchanged (e.g. the patient only ASKED 'is my appointment submitted?'):
+                                # the consumed summary used to make this answer 'NOT submitted' and re-recite the summary
+                                submitted_unchanged = bool(self.session.booking_slots.get("is_submitted")) and not bool(self.session.booking_slots.get("is_cancel")) \
+                                    and not getattr(self.session, "slots_edited_after_submit", False)
+                                if not f_cancel and submitted_unchanged:
+                                    print("[GUARD] submit_appointment_booking on an already submitted, unchanged appointment -> already_submitted")
+                                    res = {"status": "already_submitted", "message": "This appointment request is ALREADY successfully submitted and nothing has changed since. Do NOT submit again, do NOT say it is not submitted and do NOT recite the summary. Tell the patient in one short sentence that their appointment request is already submitted and our team will contact them soon."}
+                                elif not f_cancel and not sum_slots:
                                     print("[GUARD] Gemini Live modelTurn submit without a valid review summary. Blocking.")
                                     res = {
                                         "status": "waiting_confirmation",
@@ -1100,9 +1681,11 @@ class GeminiClient:
                                             self.session.booking_slots["api_id"] = res["details"]["api_id"]
                                     for k, v in full_args.items():
                                         if v is not None:
-                                            if isinstance(v, bool):
+                                            if k in ('is_submitted', 'is_cancel', 'is_update'):
+                                                pass  # set from the backend result above; this pre-submit copy (is_submitted=False) must not undo it
+                                            elif isinstance(v, bool):
                                                 self.session.booking_slots[k] = v
-                                            elif k not in ['is_submitted', 'is_cancel', 'is_update']:
+                                            else:
                                                 self.session.booking_slots[k] = str(v)
                                     await self.send_json({
                                         "type": "sync_slots",
@@ -1110,7 +1693,7 @@ class GeminiClient:
                                     })
                                 print(f"[INFO] Gemini Live modelTurn part invoked submit_appointment_booking with args: {full_args}, result: {res}")
                             elif func_name == "find_nearest_dentists":
-                                pin_val = str(args.get("pincode") or "").strip()
+                                pin_val = re.sub(r"\D", "", self._ascii_digits(str(args.get("pincode") or "")))
                                 if not pin_val and self.session.booking_slots.get("pincode"):
                                     pin_val = self.session.booking_slots.get("pincode")
 
@@ -1180,13 +1763,14 @@ class GeminiClient:
                             if bot_chunk and bot_chunk not in self.session.full_bot_reply:
                                 self.session.full_bot_reply += bot_chunk
                                 self.session.display_str += bot_chunk
-                                best_tag = detect_best_tag(self.session.latest_typed_user_text, self.session.display_str)
-                                await self.send_json({
-                                    "type": "bot_text_chunk",
-                                    "text": bot_chunk,
-                                    "tag": best_tag,
-                                    "turnId": self.session.current_voice_turn_id
-                                })
+                                if not getattr(self.session, "pending_summary_card", ""):
+                                    best_tag = detect_best_tag(self.session.latest_typed_user_text, self.session.display_str)
+                                    await self.send_json({
+                                        "type": "bot_text_chunk",
+                                        "text": bot_chunk,
+                                        "tag": best_tag,
+                                        "turnId": self.session.current_voice_turn_id
+                                    })
 
                         if "inlineData" in part:
                             incoming_pcm = base64.b64decode(part["inlineData"]["data"])
@@ -1252,6 +1836,7 @@ class GeminiClient:
                     bot_text_to_send = self.session.full_bot_reply or ""
                     clean_text = clean_assistant_text(bot_text_to_send) if bot_text_to_send else ""
 
+
                     # 🚨 Track profession inquiry without destructive text stripping
                     was_prof_already_asked = getattr(self.session, "profession_asked", False)
                     prof_re_patterns = [
@@ -1266,6 +1851,10 @@ class GeminiClient:
                                 break
                     if getattr(self.session, "consultation_agreed", False) or self.session.booking_slots.get("city"):
                         self.session.profession_asked = True
+                    from voice_agent.ai.conversation_manager import text_asks_profession
+                    if text_asks_profession(clean_text):
+                        self.session.profession_done = True
+                        self.session.profession_prompt_pending = False
                     
                     if getattr(self, 'conversation_manager', None):
                         # Worker thread: slot parsing can hit the postal/dentist APIs (blocking requests), which
@@ -1275,6 +1864,9 @@ class GeminiClient:
                         if clean_text:
                             temp_h = list(self.session.latest_client_history or []) + [{"role": "model", "parts": [{"text": clean_text}]}]
                             await asyncio.to_thread(self.conversation_manager.update_session_memory, "", temp_h)
+                    # Gemini spoke the dentist list prepared at the city confirmation -> lock city, record dentists
+                    self.sync_pending_dentists_after_turn(clean_text)
+                    self.track_pincode_request(clean_text)
 
                     # 🚨 Check if user requested an edit/change after initial submission
                     curr_u_l = (user_text or "").lower().strip()
@@ -1323,7 +1915,12 @@ class GeminiClient:
                         summary_slots = {}
                     summary_problem = None
                     bad_summary_phone = ""
-                    if is_review_summary:
+                    prepared_now = getattr(self.session, "review_prepared_turn", None) == self.session.current_voice_turn_id \
+                        and bool(self.session.last_review_summary_slots)
+                    if is_review_summary and prepared_now:
+                        # Checked by prepare_review_summary before Riya spoke it; the transcript of her speech may differ
+                        summary_slots = dict(self.session.last_review_summary_slots)
+                    elif is_review_summary:
                         merged_for_check = {
                             "user_name": self.session.user_name,
                             "user_concern": self.session.user_concern,
@@ -1333,15 +1930,25 @@ class GeminiClient:
                         summary_problem = get_review_summary_problem(merged_for_check)
                         # Phone must be one the patient actually said: Riya invents a number when she did not hear it clearly
                         if not summary_problem:
-                            sum_phone = "".join(filter(str.isdigit, str(merged_for_check.get("phone") or "")))[-10:]
+                            sum_phone = normalize_mobile(merged_for_check.get("phone")) or ""
                             said = [text for role, text in self.session.transcript_history if role == "user"] + [user_text or ""]
-                            said_digits = ["".join(filter(str.isdigit, s)) for s in said]
-                            # Spoken Gujarati/Hindi number words are transcribed only partly ("O Ganeshi ... 84 26 52 99"
-                            # for 79 84 26 52 99), so a run of 4+ of the patient's digits inside the number counts as said
-                            heard = any(sum_phone in d or (len(d) >= 4 and d in sum_phone) for d in said_digits)
-                            if sum_phone and not heard:
-                                summary_problem = "phone_unheard"
-                                bad_summary_phone = sum_phone
+                            said_digits = ["".join(filter(str.isdigit, self._ascii_digits(s))) for s in said]
+                            # The patient's transcript decides the number: a 12-digit answer is never a mobile, and a
+                            # summary with a number other than the one the patient clearly said is wrong
+                            t_status, t_phone = phone_from_user_turns(said, merged_for_check.get("pincode"))
+                            if t_status == "wrong_length":
+                                summary_problem = "phone_invalid"
+                                bad_summary_phone = t_phone
+                            elif t_status == "ok" and sum_phone and sum_phone != t_phone:
+                                summary_problem = "phone_mismatch"
+                                bad_summary_phone = f"{sum_phone}|{t_phone}"
+                            else:
+                                # Spoken Gujarati/Hindi number words are transcribed only partly ("O Ganeshi ... 84 26 52 99"
+                                # for 79 84 26 52 99), so a run of 4+ of the patient's digits inside the number counts as said
+                                heard = any(sum_phone in d or (len(d) >= 4 and d in sum_phone) for d in said_digits)
+                                if sum_phone and not heard:
+                                    summary_problem = "phone_unheard"
+                                    bad_summary_phone = sum_phone
                         # City must belong to the pincode (a summary said "Surat" with Rajkot's 360001)
                         sum_pin = "".join(filter(str.isdigit, str(merged_for_check.get("pincode") or "")))
                         sum_city = str(merged_for_check.get("city") or "").strip().lower()
@@ -1362,6 +1969,9 @@ class GeminiClient:
                                 self.session.asking_for_field = "phone"
                             if summary_problem == "city_mismatch":
                                 self.session.asking_for_field = "city_confirmation"
+                            if summary_problem == "phone_mismatch":
+                                self.session.booking_slots["phone"] = bad_summary_phone.partition("|")[2]
+                                summary_slots.pop("phone", None)  # the wrong spoken number never reaches the slots
                             correction_note = build_summary_correction_note(summary_problem, bad_summary_phone)
                             print(f"[SUMMARY-INVALID] Review summary rejected ({summary_problem}); asking Gemini to correct it.")
                         else:
@@ -1585,9 +2195,11 @@ class GeminiClient:
                                         self.session.booking_slots["api_id"] = res["details"]["api_id"]
                                 for k, v in slots_to_send.items():
                                     if v is not None:
-                                        if isinstance(v, bool):
+                                        if k in ('is_submitted', 'is_cancel', 'is_update'):
+                                            pass  # set from the backend result above; this pre-submit copy (is_submitted=False) must not undo it
+                                        elif isinstance(v, bool):
                                             self.session.booking_slots[k] = v
-                                        elif k not in ['is_submitted', 'is_cancel', 'is_update']:
+                                        else:
                                             self.session.booking_slots[k] = str(v)
                                 await self.send_json({
                                     "type": "sync_slots",
@@ -1619,28 +2231,50 @@ class GeminiClient:
                             correction_note = build_summary_correction_note(missing or "not_submitted", check_slots.get("phone") or "")
                             print(f"[SUBMIT-BLOCKED] No valid review summary to submit ({missing or 'summary not confirmed'}); asking Gemini to correct.")
 
+                    # Submitted / cancelled this turn but Riya did not ask the profession question (the server-side
+                    # submit paths never told her to): have her ask ONLY that question now - once per conversation
+                    submit_done_now = getattr(self.session, "last_submit_turn_id", None) == self.session.current_voice_turn_id
+                    if submit_done_now and correction_note is None and not is_correction_reply \
+                            and self.session.booking_slots.get("is_submitted") \
+                            and not getattr(self.session, "profession_done", False) and not text_asks_profession(clean_text):
+                        from voice_agent.ai.conversation_manager import profession_question_text
+                        correction_note = (
+                            "[BACKEND NOTE - not spoken by the patient. Do not read this note aloud.] The appointment request is "
+                            "done. Now ask ONLY this one question, in the patient's language, nothing before or after it: "
+                            f"'{profession_question_text(self._voice_lang())}'"
+                        )
+                        self.session.profession_done = True  # asked exactly once, never again
+                        print("[PROFESSION] not asked after submit -> asking Riya to ask it now")
+
                     if len(current_assistant_audio) > 0 or len(clean_text) > 0:
                         final_tag, new_pending = detect_best_tag_with_fallback(
                             user_text, clean_text or "...", self.session.pending_action_tag
                         )
                         self.session.pending_action_tag = new_pending
-                        
+                        # Summary turn: the full summary card is already on screen, so Riya's spoken short version of it
+                        # is neither shown again nor saved twice in the transcript
+                        summary_card = getattr(self.session, "pending_summary_card", "") or ""
+                        self.session.pending_summary_card = ""
+                        shown_text = "" if summary_card else (clean_text or "...")
+
                         await self.send_json({
                             "type": "bot_spoken_text",
-                            "text": clean_text or "...",
+                            "text": shown_text or "...",
                             "tag": final_tag,
                             "turnId": self.session.current_voice_turn_id
                         })
                         
                         if user_text and user_text != "Hello":
                             self.session.add_transcript_turn("user", user_text)
-                        if clean_text and clean_text != "...":
+                        if summary_card:
+                            self.session.add_transcript_turn("model", summary_card)
+                        elif clean_text and clean_text != "...":
                             self.session.add_transcript_turn("model", clean_text)
-                        log_live_voice_conversation(user_text, clean_text or "...", dict(self.session.booking_slots))
+                        log_live_voice_conversation(user_text, summary_card or clean_text or "...", dict(self.session.booking_slots))
                         await self.send_json({
                             "type": "reply_complete",
                             "userText": user_text,
-                            "botText": clean_text or "...",
+                            "botText": shown_text,
                             "tag": final_tag,
                             "totalChunks": self.session.chunk_index,
                             "slots": dict(self.session.booking_slots),

@@ -47,7 +47,9 @@ class Session:
         self.consultation_agreed = False
         self.consultation_offered = False
         self.consultation_declined = False
-        self.profession_asked = False
+        self.profession_asked = False  # also set just to SUPPRESS the question during booking
+        self.profession_done = False  # the profession question was really asked / answered
+        self.profession_prompt_pending = False  # patient declined the booking -> ask the profession next
         self.asking_for_field = None
         self.slot_just_updated = False
         self.recommended_dentists = []

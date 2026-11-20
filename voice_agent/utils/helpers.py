@@ -78,7 +78,7 @@ ALL_AUTHORISED_DOCTORS_LIST = ALL_CERTIFIED_DOCTORS_LIST = [
     "Dr. Surangana Gupta", "Dr. Jaydev Roy", "Dr. Himanshu Sharma",
     "Dr. Aman Singhal", "Dr. Mohammed Issak", "Dr. Srilakshmi CH", "Dr. M Jaydev",
     "Dr. Reuben Joseph", "Dr. Praneeth Kumar", "Dr. Kalyani Jagdale", "Dr. Digvijay Deshpande",
-    "Dr. Adil Lyngdoh", "Dr. Asmita Sodhi", "Dr. Neetu Jindal", "Dr. A K Saha"
+    "Dr. Adil Lyngdoh", "Dr. Asmita Sodhi", "Dr. Neetu Jindal", "Dr. A K Saha", "Dr. Chinar Patel"
 ]
 
 DOCTOR_HOME_CITIES = {
@@ -98,7 +98,8 @@ DOCTOR_HOME_CITIES = {
     "Dr. Aman Singhal": "Gwalior", "Dr. Mohammed Issak": "Bangalore", "Dr. Srilakshmi CH": "Hyderabad", "Dr. M Jaydev": "Hyderabad",
     "Dr. Reuben Joseph": "Chennai", "Dr. Praneeth Kumar": "Guntur", "Dr. Kalyani Jagdale": "Sangli",
     "Dr. Digvijay Deshpande": "Sangli", "Dr. Adil Lyngdoh": "Guwahati", "Dr. Asmita Sodhi": "Faridkot",
-    "Dr. Neetu Jindal": "Sri Ganganagar", "Dr. A K Saha": "Malda"
+    "Dr. Neetu Jindal": "Sri Ganganagar", "Dr. A K Saha": "Malda",
+    "Dr. Chinar Patel": "Patan"
 }
 
 def clean_hallucinations(text):
@@ -126,6 +127,49 @@ def is_valid_indian_mobile(value) -> bool:
     """Exactly 10 digits starting with 6-9 (Indian mobile numbering) and not a prompt/example placeholder."""
     digits = "".join(filter(str.isdigit, str(value or "")))
     return len(digits) == 10 and digits[0] in "6789" and digits not in PLACEHOLDER_PHONES
+
+def _to_ascii_digits(text):
+    """Gujarati/Devanagari/other Indic digits -> 0-9."""
+    import unicodedata
+    return "".join(str(unicodedata.decimal(c)) if c.isdecimal() else c for c in str(text or ""))
+
+def normalize_mobile(value):
+    """The 10-digit mobile in `value`, or None. Accepts exactly 10 digits, or 10 digits behind a '0' / '91'
+    prefix. Anything longer or shorter is rejected - never cut down to its last/first 10 digits
+    (a 12-digit '798422222222' used to become '7984222222')."""
+    digits = re.sub(r"\D", "", _to_ascii_digits(value))
+    if len(digits) == 11 and digits.startswith("0"):
+        digits = digits[1:]
+    elif len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    return digits if is_valid_indian_mobile(digits) else None
+
+def phone_from_user_turns(user_texts, pincode=""):
+    """The mobile number the patient's own transcript says: looks at the latest user turn that holds a number
+    (7+ digits once the pincode is removed). Returns (status, value):
+      ("ok", "7984265299")    - that turn holds exactly one valid 10-digit mobile
+      ("wrong_length", "...") - that turn holds more digits than a mobile (e.g. 12) -> must ask again
+      ("partial", "...")      - fewer than 10 digits (spoken numbers are often transcribed only partly)
+      ("none", "")            - the patient never said a number"""
+    pin = re.sub(r"\D", "", str(pincode or ""))
+    for raw in reversed([t for t in (user_texts or []) if t]):
+        t = _to_ascii_digits(raw)
+        if len(pin) == 6:
+            t = re.sub(r"(?<!\d)" + pin + r"(?!\d)", " ", t)
+        digits = re.sub(r"\D", "", t)
+        if len(digits) < 7:
+            continue
+        found = normalize_mobile(digits)
+        if found:
+            return "ok", found
+        # The same number said twice ("7984265299, 7984265299") is still that number
+        if len(digits) % 10 == 0 and len({digits[i:i + 10] for i in range(0, len(digits), 10)}) == 1 \
+                and is_valid_indian_mobile(digits[:10]):
+            return "ok", digits[:10]
+        if len(digits) > 10:
+            return "wrong_length", digits
+        return "partial", digits
+    return "none", ""
 
 def get_review_summary_problem(slots: dict):
     """Returns the first field that makes a review summary unsubmittable, or None when every required field is valid."""
@@ -261,7 +305,8 @@ def extract_slots_from_review_summary(text: str) -> dict:
         if re.search(r"\b[0-9]{10}\b", raw_v) or any(w in k_clean or w in k_trans for w in ["phone", "phon", "phona", "fone", "fon", "mobile", "mobail", "duravani", "tolaipesi", "sampark"]):
             digits = "".join(filter(str.isdigit, raw_v))
             if len(digits) >= 10:
-                extracted["phone"] = digits[-10:]
+                # Exactly 10 digits (optionally behind 0 / 91); anything else is kept as-is so validation rejects it
+                extracted["phone"] = normalize_mobile(digits) or digits
                 continue
 
         # A1. PINCODE (Pincode key or 6-digit postal code)

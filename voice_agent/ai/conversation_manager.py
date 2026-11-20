@@ -506,7 +506,8 @@ def extract_valid_phone(text_str):
     s = str(text_str)
     
     # 1. Match standard 10-digit mobile number starting with 6, 7, 8, or 9
-    m = re.search(r"(?:(?:\+?91|0)[\s\-]?)?([6-9]\d{4}[\s\-]?\d{5})\b", s)
+    # (?<!\d) / (?!\d): never take 10 digits out of a longer number ('798422222222' is not '8422222222')
+    m = re.search(r"(?<!\d)(?:(?:\+?91|0)[\s\-]?)?([6-9]\d{4}[\s\-]?\d{5})(?!\d)", s)
     if m:
         clean = "".join(filter(str.isdigit, m.group(1)))
         if len(clean) == 10:
@@ -774,6 +775,44 @@ CONFIRMATION_CANCEL_MESSAGES_11 = {
     "en": "Your appointment request has been cancelled. Please let me know if you need anything else."
 }
 
+PROFESSION_QUESTIONS_11 = {
+    "en": "By the way, what is your profession?",
+    "gu": "તેમ છતાં, જો હું પૂછી શકું, તમારો વ્યવસાય (પ્રોફેશન) શું છે?",
+    "hi": "वैसे, अगर मैं पूछ सकती हूँ, आपका पेशा या प्रोफेशन क्या है?",
+    "mr": "तसे, तुमचा व्यवसाय किंवा प्रोफेशन काय आहे?",
+    "bn": "যাইহোক, আপনার পেশা কি?",
+    "ta": "வழியில், உங்கள் தொழில் என்ன?",
+    "te": "అన్నట్లు, మీ వృత్తి ఏమిటి?",
+    "kn": "ಅಂದಹಾಗೆ, ನಿಮ್ಮ ವೃತ್ತಿ ಏನು?",
+    "ml": "വഴിയിൽ, നിങ്ങളുടെ തൊഴിൽ എന്താണ്?",
+    "pa": "ਵੈਸੇ, ਤੁਹਾਡਾ ਕਿੱਤਾ ਕੀ ਹੈ?",
+    "or": "ସେମିତି, ଆପଣଙ୍କ ପେଶା କ'ଣ?"
+}
+
+PROFESSION_DECLINE_ACK_11 = {
+    "en": "No problem at all!", "gu": "કોઈ વાંધો નહીં!", "hi": "कोई बात नहीं!", "mr": "काही हरकत नाही!",
+    "bn": "কোনো সমস্যা নেই!", "ta": "பரவாயில்லை!", "te": "పర్వాలేదు!", "kn": "ಪರವಾಗಿಲ್ಲ!",
+    "ml": "കുഴപ്പമില്ല!", "pa": "ਕੋਈ ਗੱਲ ਨਹੀਂ!", "or": "କିଛି ଅସୁବିଧା ନାହିଁ!"
+}
+
+# Phrases that mean Riya really asked for the profession (profession_asked is also set just to SUPPRESS the
+# question during booking, so it cannot tell whether the question was ever asked)
+_PROFESSION_ASK_PHRASES = [
+    "what is your profession", "what do you do for work", "what profession", "your profession",
+    "વ્યવસાય", "પ્રોફેશન", "તમે શું કામ કરો છો", "पेशा", "प्रोफेशन", "आप क्या काम करते",
+    "व्यवसाय किंवा", "আপনার পেশা", "உங்கள் தொழில்", "మీ వృత్తి", "ನಿಮ್ಮ ವೃತ್ತಿ", "നിങ്ങളുടെ തൊഴിൽ", "ਤੁਹਾਡਾ ਕਿੱਤਾ", "ଆପଣଙ୍କ ପେଶା"
+]
+
+
+def profession_question_text(lang):
+    return PROFESSION_QUESTIONS_11.get((lang or "en")[:2].lower(), PROFESSION_QUESTIONS_11["en"])
+
+
+def text_asks_profession(text):
+    t = str(text or "").lower()
+    return bool(t) and any(p in t for p in _PROFESSION_ASK_PHRASES)
+
+
 def get_review_summary_prompt(lang, display_name, ph, ct, pin, cn, dr, is_update=False):
     import random
     if lang in ["gu", "hi", "mr", "bn", "ta", "te", "kn", "ml", "pa", "or", "en"]:
@@ -957,6 +996,15 @@ def get_review_summary_prompt(lang, display_name, ph, ct, pin, cn, dr, is_update
         }
         return prompts.get(lang_key, f"NEXT STEP: All details are collected! Do NOT re-ask any details. Present the complete all-at-once review summary with a natural varied opening (such as '{en_open}') and instruct the user to write/say 'submit' or 'cancel':\n'{en_open}\n- Name: {display_name}\n- Phone: {ph}\n- City: {ct}\n- Pincode: {pin}\n- Concern: {cn}\n- Doctor: {dr_en}\n\nPlease say 'submit' to submit this appointment request to our clinic team, or say 'cancel' to cancel it.\n🚨 ZERO-CUTOFF MANDATE: YOU MUST RECITE ALL 6 LINES AND SPEAK THE FULL CLOSING SENTENCE WITH BOTH 'SUBMIT' AND 'CANCEL' TO THE VERY LAST WORD WITHOUT CUTTING OFF OR STOPPING EARLY!")
 
+def build_review_summary_text(lang, display_name, ph, ct, pin, cn, dr, is_update=False):
+    """The exact review summary text (opening, all detail lines and the full 'submit' / 'cancel' closing
+    sentence) - taken from the quoted example inside get_review_summary_prompt so both stay identical."""
+    prompt = get_review_summary_prompt(lang, display_name, ph, ct, pin, cn, dr, is_update=is_update)
+    start = prompt.find(":\n'")
+    body = prompt[start + 3:] if start >= 0 else prompt
+    return body.split("\n🚨")[0].strip().rstrip("'").strip()
+
+
 def get_missing_field_message(lang, missing_type, city=None):
     messages = {
         "name": {
@@ -1067,6 +1115,15 @@ class ConversationManager:
         self.session = session
         self.send_json = send_json_callback
         self.gemini_client = gemini_client
+
+    def _append_profession_question(self, msg, lang):
+        """After the booking ends (submitted or cancelled) the next question is the profession, if never asked."""
+        if getattr(self.session, "profession_done", False):
+            return msg
+        self.session.profession_done = True
+        self.session.profession_asked = True
+        self.session.profession_prompt_pending = False
+        return f"{msg} {profession_question_text(lang)}"
 
     def _build_transcript_text(self) -> str:
         transcript_lines = []
@@ -1451,7 +1508,8 @@ class ConversationManager:
             has_dental_context = any(dw in tl for dw in [
                 "teeth", "tooth", "smile", "dant", "daant", "molar", "dadh", "enamel", "veneer", "veneers", "crown", "crowns", "gum", "gums",
                 "દાંત", "દાંતમાં", "દાંતો", "દાઢ", "પેઢા", "પેઢાં", "સ્માઇલ", "વિનિયર",
-                "दांत", "दांतों", "दाँत", "दाढ़", "मसूड़े", "मसूड़ों", "स्माइल", "विनियर"
+                "दांत", "दांतों", "दाँत", "दाढ़", "मसूड़े", "मसूड़ों", "स्माइल", "विनियर",
+                "ଦାନ୍ତ", "দাঁত", "பல்", "పళ్ళ", "పన్ను", "ಹಲ್ಲು", "പല്ല്", "ਦੰਦ"
             ])
 
             non_dental_parts = [
@@ -1502,7 +1560,7 @@ class ConversationManager:
             if _has_word(["cavity", "decay", "sado", "kido", "keeda", "khado", "khadho", "સડો", "કીડો", "ખાડો", "કેવિટી", "सड़न", "कीड़ा", "कैविटी", "दांत में कीड़ा"]):
                 symptoms.append("dental cavity and decay")
 
-            if _has_word(["crooked teeth", "misaligned teeth", "crowded teeth", "straighten teeth", "વાંકા દાંત", "ટેढ़े दांत", "दांत सीधे"]) or (has_dental_context and _has_word(["crooked", "misaligned", "crowded", "overlap", "straighten", "unorganise", "unorganized", "irregular", "uneven", "tedhe", "terhe", "alignment", "વાંકા"])):
+            if _has_word(["sidha nahin", "sidha nahi", "sidha nuhen", "seedha nahi", "seedhe nahi", "sidhe nahi", "ସିଧା ନାହିଁ", "सीधे नहीं", "सीधा नहीं", "unalign", "not straight"]) or                     _has_word(["crooked teeth", "misaligned teeth", "crowded teeth", "straighten teeth", "વાંકા દાંત", "ટેढ़े दांत", "दांत सीधे"]) or (has_dental_context and _has_word(["crooked", "misaligned", "crowded", "overlap", "straighten", "unorganise", "unorganized", "irregular", "uneven", "tedhe", "terhe", "alignment", "વાંકા"])):
                 symptoms.append("irregular and misaligned teeth")
 
             if _has_word(["broken tooth", "chipped tooth", "cracked tooth", "તૂટેલા દાંત", "દાંત તૂટી", "टूटा दांत", "टूटे दांत", "दांत टूट गया"]) or (has_dental_context and _has_word(["chip", "broken", "crack", "punch", "toot", "bhangi", "તૂટેલા", "તૂટી ગયા", "ટુકડો", "ટૂટી ગયા", "टूट गया"])):
@@ -1521,7 +1579,7 @@ class ConversationManager:
             if _has_word(["gum bleeding", "bleeding gums", "દાંતમાંથી લોહી", "પેઢામાંથી લોહી", "दांत से खून", "मसूड़ों से खून"]) or (has_dental_context and _has_word(["lohi", "khoon", "bleeding", "blood", "લોહી", "खून"])):
                 symptoms.append("bleeding gums and sensitivity")
 
-            if _has_word(["gap between teeth", "spacing between teeth", "daant ma gap", "dant ma gap", "દાંતમાં ગેપ", "દાંત વચ્ચે ગેપ", "દાંતોમાં ગેપ", "दांतों में गैप", "दांतों के बीच गैप"]) or (has_dental_context and _has_word(["gap", "gaps", "spacing", "space", "vachhe gap", "bich me gap", "jagya", "khali jagya", "ગૅપ", "ગેપ", "જગ્યા", "गैップ", "जगह"])):
+            if _has_word(["gap between teeth", "spacing between teeth", "daant ma gap", "dant ma gap", "દાંતમાં ગેપ", "દાંત વચ્ચે ગેપ", "દાંતોમાં ગેપ", "दांतों में गैप", "दांतों के बीच गैप"]) or (has_dental_context and _has_word(["gap", "gaps", "spacing", "space", "vachhe gap", "bich me gap", "jagya", "khali jagya", "ગૅપ", "ગેપ", "જગ્યા", "गैप", "जगह", "phanka", "fanka", "phank", "fank", "ଫାଙ୍କ", "ফাঁক"])):
                 symptoms.append("gap between teeth")
 
             if _has_word(["loose tooth", "loose teeth", "shaking tooth", "દાંત હલે છે", "દાંત હલે", "दांत हिल रहे हैं", "दांत हिलना"]) or (has_dental_context and _has_word(["hale", "hale chhe", "hil", "hil raha", "shaking", "હલે છે", "हिलना"])):
@@ -1798,7 +1856,10 @@ class ConversationManager:
             last_model_asked_city = bool(re.search(r"(કયા શહેરમાં|ક્યા શહેરમાં|કયા શહેર|શહેરમાં રહો|ક્યાં રહો છો|which city|what city|city do you reside|किस शहर|कौन से शहर|शहर में रहते|কোন্ শহরে)", last_model_turn_text))
             last_model_asked_pincode = bool(re.search(r"(પિનકોડ|pincode|pin code|postal code|पिनकोड|পিনকোড)", last_model_turn_text))
             last_model_asked_phone = bool(re.search(r"(મોબાઇલ|મોબાઈલ|ફોન નંબર|phone|mobile|फ़ोन|फोन नंबर|মোবাইল)", last_model_turn_text))
-            last_model_asked_concern = bool(re.search(r"(dental concern|smile goal|દાંતની કઈ સમસ્યા|દાંતની સમસ્યા|દાંત ની સમસ્યા|દાંતમાં|दांतों की क्या समस्या|दांत की क्या समस्या|दांतों में क्या समस्या)", last_model_turn_text))
+            last_model_asked_concern = bool(re.search(r"(dental concern|smile goal|દાંતની કઈ સમસ્યા|દાંતની સમસ્યા|દાંત ની સમસ્યા|દાંતમાં|दांतों की क्या समस्या|दांत की क्या समस्या|दांतों में क्या समस्या"
+                                                 # Odia / Bengali / Tamil / Telugu / Kannada / Malayalam / Punjabi / Marathi "what problem with your teeth/smile"
+                                                 r"|ଦାନ୍ତ.*ସମସ୍ୟା|ସମସ୍ୟା.*ଦାନ୍ତ|দাঁত.*সমস্যা|சிரிப்பு.*பிரச்சனை|பல்.*பிரச்சனை|పళ్ళ.*సమస్య|నవ్వు.*సమస్య"
+                                                 r"|ಹಲ್ಲ.*ಸಮಸ್ಯೆ|ನಗು.*ಸಮಸ್ಯೆ|പല്ല.*പ്രശ്ന|ਦੰਦ.*ਸਮੱਸਿਆ|दात.*समस्या)", last_model_turn_text))
 
             # Detect strict valid 10-digit Indian phone pattern
             valid_phone = extract_valid_phone(text)
@@ -2367,7 +2428,10 @@ class ConversationManager:
                     self.session.name_confirmed = True
 
             concern = extract_dental_concern(text)
-            if not concern and locals().get('last_model_asked_concern') and len(text.strip()) >= 3 and not is_update_intent and not is_affirmative_submit(text):
+            # Only when no concern is known yet: Riya's consultation offer ("...તમને દાંતમાં દુખાવો છે. શું હું ... બુક કરું?")
+            # also matches the concern-question pattern, and the patient's "करू ने" (yes) then replaced the real concern
+            if not concern and not (self.session.user_concern or self.session.booking_slots.get("message")) \
+                    and locals().get('last_model_asked_concern') and len(text.strip()) >= 3 and not is_update_intent and not is_affirmative_submit(text):
                 # Fallback: User directly answered Riya's question asking what dental concern or smile goal they have
                 t_lower = text.lower().strip()
                 if not any(k in t_lower for k in ["naam", "name", "dr", "doctor", "submit", "cancel", "pincode"]):
@@ -2400,6 +2464,12 @@ class ConversationManager:
             ]
             t_clean = text.lower().strip()
             if any(dw in t_clean for dw in decline_words) or (t_clean in ["no", "nahi", "nathi", "na", "no thanks"]):
+                # Declining the booking (not yet submitted) -> the next reply must ask the profession, if never asked
+                if (not getattr(self.session, "consultation_declined", False)
+                        and not getattr(self.session, "consultation_agreed", False)
+                        and not self.session.booking_slots.get("is_submitted")
+                        and not getattr(self.session, "profession_done", False)):
+                    self.session.profession_prompt_pending = True
                 self.session.consultation_declined = True
                 self.session.consultation_agreed = False
 
@@ -2453,6 +2523,21 @@ class ConversationManager:
             ut_low = str(user_text or "").lower()
             if any(j in ut_low for j in prof_jobs) and any(w in ut_low for w in ["i am", "i'm", "im", "hoon", "hu", "chu", "chhu", "me", "main", "maro", "mera"]):
                 self.session.profession_asked = True
+                # Whole words only: substrings ('ca' in 'canceling', 'me' in 'appointment') are not a profession
+                if any(re.search(rf"\b{re.escape(j)}\b", ut_low) for j in prof_jobs) and \
+                        re.search(r"\b(i am|i'm|im|hoon|hu|chu|chhu|main|maro|mera)\b", ut_low):
+                    self.session.profession_done = True
+                    self.session.profession_prompt_pending = False
+            # profession_done = the question was really asked (unlike profession_asked, which also suppresses it)
+            if history and isinstance(history, list):
+                for h in history:
+                    if isinstance(h, dict) and h.get("role") in ["model", "assistant"]:
+                        parts = h.get("parts", [])
+                        h_txt = parts[0].get("text", "") if parts and isinstance(parts[0], dict) else str(h.get("text") or "")
+                        if text_asks_profession(h_txt):
+                            self.session.profession_done = True
+                            self.session.profession_prompt_pending = False
+                            break
 
             if history and isinstance(history, list):
                 for h in history:
@@ -3076,6 +3161,8 @@ class ConversationManager:
             was_guidance_asked = getattr(self.session, 'doctor_guidance_asked', False)
 
             if is_generic_no:
+                if not getattr(self.session, "profession_done", False) and not slots.get("is_submitted"):
+                    self.session.profession_prompt_pending = True
                 self.session.consultation_declined = True
                 self.session.asking_for_field = None
                 self.session.doctor_guidance_asked = False
@@ -3192,6 +3279,34 @@ class ConversationManager:
             "type": "sync_slots",
             "slots": self.session.booking_slots
         })
+
+        # ⚡ Patient declined the booking and was never asked the profession -> ask it now (sent directly) ⚡
+        if getattr(self.session, "profession_prompt_pending", False) and not getattr(self.session, "profession_done", False) \
+                and not is_cancel_submit(user_text, self.session):
+            self.session.profession_prompt_pending = False
+            self.session.profession_done = True
+            self.session.profession_asked = True
+            prof_text = f"{PROFESSION_DECLINE_ACK_11.get(user_lang, PROFESSION_DECLINE_ACK_11['en'])} {profession_question_text(user_lang)}"
+            _turn = self.session.current_voice_turn_id
+            await self.send_json({"type": "bot_text_chunk", "text": prof_text, "tag": None, "turnId": _turn})
+            await self.send_json({"type": "bot_spoken_text", "text": prof_text, "tag": None, "turnId": _turn})
+            await self.send_json({
+                "type": "reply_complete",
+                "userText": user_text,
+                "botText": prof_text,
+                "tag": None,
+                "totalChunks": 1,
+                "slots": dict(self.session.booking_slots),
+                "userName": self.session.user_name,
+                "userConcern": self.session.user_concern,
+                "userCity": self.session.booking_slots.get("city"),
+                "userDoctor": self.session.booking_slots.get("doctor_name"),
+                "userPhone": self.session.booking_slots.get("phone")
+            })
+            self.session.add_transcript_turn("model", prof_text)
+            print(f"[PROFESSION-SENT] Patient declined booking -> asked profession: {prof_text}")
+            return
+        self.session.profession_prompt_pending = False
 
         # ⚡ Instant Fast-Path Submission / Cancellation when User Confirms Review Summary ⚡
         user_txt_l = user_text.lower().strip()
@@ -3356,17 +3471,31 @@ class ConversationManager:
             })
             return
 
+        # Already submitted and nothing changed since -> "ok" / "thanks" / even "submit" must NOT submit again.
+        # (The old review summary stays in the chat history, so "ok" after the submission re-submitted it.)
+        submitted_unchanged = bool(self.session.booking_slots.get("is_submitted")) and not getattr(self.session, "slots_edited_after_submit", False)
+        # A plain "yes/ok" only confirms a summary that is Riya's latest message
+        last_model_txt = ""
+        for _t in reversed(history or []):
+            if isinstance(_t, dict) and _t.get("role") in ["model", "assistant"]:
+                last_model_txt = get_turn_text(_t) or ""
+                break
+        summary_is_latest = is_submit_review_summary(last_model_txt) if last_model_txt else has_review_shown
+
         if is_cancel and has_lead_context:
             is_user_confirming_submit = True
+        elif submitted_unchanged and (is_explicit_submit or is_affirmative):
+            print(f"[SUBMIT-GUARD] '{user_text}' after an unchanged submitted appointment -> not re-submitting")
         elif is_explicit_submit and all_slots_complete:
             is_user_confirming_submit = True
-        elif is_affirmative and all_slots_complete and is_full_review_ready:
+        elif is_affirmative and all_slots_complete and is_full_review_ready and summary_is_latest:
             is_user_confirming_submit = True
         elif is_cancel:
             # User wants to cancel but no lead was created yet
             self.session.booking_slots["is_cancel"] = True
             self.session.booking_slots["is_submitted"] = False
             confirm_msg = CONFIRMATION_CANCEL_MESSAGES_11.get(user_lang, CONFIRMATION_CANCEL_MESSAGES_11["en"])
+            confirm_msg = self._append_profession_question(confirm_msg, user_lang)
             await self.send_json({
                 "type": "bot_text_chunk",
                 "text": confirm_msg,
@@ -3558,6 +3687,8 @@ class ConversationManager:
                 confirm_msg = CONFIRMATION_CANCEL_MESSAGES_11.get(user_lang, CONFIRMATION_CANCEL_MESSAGES_11["en"])
             else:
                 confirm_msg = CONFIRMATION_MESSAGES_11.get(user_lang, CONFIRMATION_MESSAGES_11["en"])
+            if res.get("status") == "success":
+                confirm_msg = self._append_profession_question(confirm_msg, user_lang)
 
             await self.send_json({
                 "type": "bot_text_chunk",
@@ -3661,7 +3792,7 @@ class ConversationManager:
                                                     gemini_is_cancel = bool(call_args.get("is_cancel"))
                                                     effective_is_cancel = is_cancel or gemini_is_cancel
                                                     has_sub_id = bool(self.session.booking_slots.get("submission_id") or getattr(self.session, "submitted_lead_id", None))
-                                                    can_submit_req = effective_is_cancel or (not self.session.booking_slots.get("is_submitted") and all_slots_complete) or (has_sub_id and (is_explicit_submit or is_user_confirming_submit))
+                                                    can_submit_req = effective_is_cancel or (not self.session.booking_slots.get("is_submitted") and all_slots_complete) or (has_sub_id and not submitted_unchanged and (is_explicit_submit or is_user_confirming_submit))
                                                     if (is_user_confirming_submit or effective_is_cancel or is_explicit_submit) and can_submit_req:
                                                         submit_args = dict(self.session.booking_slots)
                                                         sub_id = self.session.booking_slots.get("submission_id") or getattr(self.session, "submitted_lead_id", None)
@@ -3703,6 +3834,7 @@ class ConversationManager:
                                                                 "type": "sync_slots",
                                                                 "slots": self.session.booking_slots
                                                             })
+                                                            confirm_msg = self._append_profession_question(confirm_msg, user_lang)
                                                             full_text = confirm_msg
                                                             await self.send_json({
                                                                 "type": "bot_text_chunk",
@@ -3785,6 +3917,7 @@ class ConversationManager:
                     full_text = gate_msgs.get(user_lang, gate_msgs["en"])
             elif not getattr(self.session, 'profession_asked', False):
                 self.session.profession_asked = True
+                self.session.profession_done = True
                 prof_msgs = {
                     "gu": f"તેમ છતાં, {display_name}, જો હું પૂછી શકું, તમે શું કામ કરો છો?",
                     "hi": f"वैसे, {display_name}, अगर मैं पूछ सकती हूँ, आप क्या काम करते हैं?",
@@ -3865,6 +3998,9 @@ class ConversationManager:
                 if re.search(pat, clean_text, flags=re.IGNORECASE):
                     self.session.profession_asked = True
                     break
+        if text_asks_profession(clean_text):
+            self.session.profession_done = True
+            self.session.profession_prompt_pending = False
 
         # ⚡ CRITICAL: Extract and synchronize slots directly from Riya's review/confirmation message ⚡
         if is_submit_review_summary(clean_text or full_text):
@@ -4113,7 +4249,11 @@ class ConversationManager:
                     elif getattr(self.session, "city_confirm_needed", False) or not self.session.booking_slots.get("city"):
                         p_pin = self.session.booking_slots.get("pincode") or getattr(self.session, 'pending_pincode', '')
                         p_cit = getattr(self.session, 'pending_display_city', '') or getattr(self.session, 'pending_city', '') or self.session.booking_slots.get("city")
-                        active_mem_lines.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 3.5 (Confirm City from Pincode ONLY). Pincode is {p_pin} ({p_cit} area). Ask ONLY: 'Based on your pincode {p_pin}, you reside in {p_cit} area, right?'. 🚨 DO NOT recommend doctors, DO NOT ask doctor guidance, DO NOT ask phone number!")
+                        if getattr(self.session, "asking_for_field", None) == "city_confirmation":
+                            # The area question was already asked: asking it again on a nudge/reconnect restarted the loop
+                            active_mem_lines.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 3.5 done. You ALREADY asked whether the patient lives in {p_cit} (pincode {p_pin}) - NEVER ask that again. If the patient says yes, call find_nearest_dentists with pincode {p_pin} and tell the doctors it returns.")
+                        else:
+                            active_mem_lines.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 3.5 (Confirm City from Pincode ONLY). Pincode is {p_pin} ({p_cit} area). Ask ONLY: 'Based on your pincode {p_pin}, you reside in {p_cit} area, right?'. 🚨 DO NOT recommend doctors, DO NOT ask doctor guidance, DO NOT ask phone number!")
                     elif getattr(self.session, "is_travel_booking_turn", False) or (getattr(self.session, "travel_destination_city", None) and not self.session.booking_slots.get("doctor_name")):
                         t_dest = getattr(self.session, "travel_destination_city", "") or self.session.booking_slots.get("clinic_city", "")
                         r_cit = self.session.booking_slots.get("city", "")
