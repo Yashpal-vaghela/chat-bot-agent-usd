@@ -1,6 +1,7 @@
 import os
 import json
 import base64
+import binascii
 import uuid
 import datetime
 import threading
@@ -33,7 +34,7 @@ def api_tts(request):
     if not api_key:
         return JsonResponse({'error': 'GEMINI_API_KEY is not set'}, status=500)
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key={api_key}"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent"
     payload = {
         "contents": [{"parts": [{"text": text}]}],
         "generationConfig": {
@@ -50,28 +51,24 @@ def api_tts(request):
     }
     
     try:
-        response = httpx.post(url, json=payload, timeout=20.0)
+        response = httpx.post(url, headers={"x-goog-api-key": api_key}, json=payload, timeout=20.0)
         if response.status_code != 200:
-            return JsonResponse({'error': f'Gemini TTS Failed: {response.text}'}, status=500)
+            return JsonResponse({'error': f'Speech provider returned HTTP {response.status_code}'}, status=502)
         
         result = response.json()
-        candidates = result.get('candidates', [])
-        if not candidates:
-            return JsonResponse({'error': 'No content candidates returned'}, status=500)
-        
-        inline_data = candidates[0].get('content', {}).get('parts', [{}])[0].get('inlineData', {})
-        audio_data = inline_data.get('data')
-        
-        if not audio_data:
-            return JsonResponse({'error': 'No audio returned from Gemini TTS'}, status=500)
-        
-        # Convert raw PCM base64 payload to WAV base64
-        pcm_bytes = base64.b64decode(audio_data)
-        wav_base64 = wrap_pcm_to_wav_base64(pcm_bytes, 24000)
-        return JsonResponse({'audioBase64': wav_base64})
-        
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        for candidate in result.get('candidates', []):
+            audio = bytearray()
+            for part in candidate.get('content', {}).get('parts', []):
+                inline = part.get('inlineData', {})
+                if inline.get('data') and inline.get('mimeType', 'audio/L16').lower().startswith('audio/'):
+                    audio.extend(base64.b64decode(inline['data'], validate=True))
+            if audio:
+                return JsonResponse({'audioBase64': wrap_pcm_to_wav_base64(audio, 24000)})
+        return JsonResponse({'error': 'Speech provider returned no audio'}, status=502)
+    except httpx.TimeoutException:
+        return JsonResponse({'error': 'Speech provider timed out'}, status=504)
+    except (httpx.RequestError, binascii.Error, ValueError):
+        return JsonResponse({'error': 'Unable to read speech provider response'}, status=502)
 
 # ==============================================================================
 # Voice Agent Independent Email Configuration (ONLY Voice Agent - not other mails)
@@ -218,29 +215,3 @@ def submit_feedback(request):
         response = JsonResponse({'error': str(e)}, status=500)
         response['Access-Control-Allow-Origin'] = '*'
         return response
-
-def wrap_pcm_to_wav_base64(base64_pcm, sample_rate=24000):
-    pcm_data = base64.b64decode(base64_pcm)
-    header = bytearray(44)
-    
-    # RIFF Identifier
-    header[0:4] = b'RIFF'
-    # File Size (36 + data size)
-    file_size = 36 + len(pcm_data)
-    header[4:8] = file_size.to_bytes(4, 'little')
-    # WAVE Header
-    header[8:12] = b'WAVE'
-    # fmt Chunk
-    header[12:16] = b'fmt '
-    header[16:20] = (16).to_bytes(4, 'little')  # Chunk size: 16
-    header[20:22] = (1).to_bytes(2, 'little')    # Audio format: PCM (1)
-    header[22:24] = (1).to_bytes(2, 'little')    # Channels: Mono (1)
-    header[24:28] = sample_rate.to_bytes(4, 'little')  # Sample rate
-    header[28:32] = (sample_rate * 2).to_bytes(4, 'little')  # Byte rate (sample_rate * channels * bits_per_sample/8)
-    header[32:34] = (2).to_bytes(2, 'little')    # Block align (channels * bits_per_sample/8)
-    header[34:36] = (16).to_bytes(2, 'little')   # Bits per sample (16)
-    # data Chunk
-    header[36:40] = b'data'
-    header[40:44] = len(pcm_data).to_bytes(4, 'little')  # Data size
-    
-    return base64.b64encode(header + pcm_data).decode('utf-8')

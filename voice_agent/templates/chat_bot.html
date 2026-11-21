@@ -731,6 +731,8 @@
 
     let localTurnId = 0;
     let pendingAudioDecodes = 0;
+    let bookingAudioStopCount = 0;
+    const bookingCaptionIds = new WeakMap();
 
     let activeTag = null;
     let activeBotMessageDiv = null;
@@ -1007,6 +1009,10 @@
 
     function saveHistory() {
         sessionStorage.setItem('usd_chat_history', JSON.stringify(chatHistory));
+    }
+
+    function isInternationalBooking(slots) {
+        return Boolean(slots.country_code && slots.country_code !== 'IN');
     }
 
     function addUserHistoryIfNew(text) {
@@ -1491,6 +1497,7 @@
 
     async function playAudioChunk(base64) {
         if (!base64) return;
+        const stopCount = bookingAudioStopCount;
         updateState('speaking');
 
         try {
@@ -1509,6 +1516,7 @@
                 pendingAudioDecodes--;
             }
 
+            if (stopCount !== bookingAudioStopCount) return;
             const source = audioCtx.createBufferSource();
             source.buffer = audioBuffer;
 
@@ -1850,6 +1858,8 @@
     }
 
     function extractUserCity() {
+        const savedSlots = JSON.parse(sessionStorage.getItem('usd_booking_slots') || '{}');
+        if (isInternationalBooking(savedSlots)) return savedSlots.city || '';
         const existing = sessionStorage.getItem('usd_user_city');
         const multiCityMap = {
             "અમદાવાદ": "Ahmedabad", "સુરત": "Surat", "વડોદરા": "Vadodara", "બરોડા": "Vadodara",
@@ -1876,7 +1886,6 @@
             if (multiCityMap[revSummary.city]) return multiCityMap[revSummary.city];
             return revSummary.city;
         }
-        const savedSlots = JSON.parse(sessionStorage.getItem('usd_booking_slots') || '{}');
         if (savedSlots.city) {
             if (multiCityMap[savedSlots.city.trim()]) return multiCityMap[savedSlots.city.trim()];
             const isCert = certifiedCities.some(c => c.toLowerCase() === savedSlots.city.trim().toLowerCase());
@@ -1935,6 +1944,8 @@
     }
 
     function extractUserDoctor() {
+        const savedSlots = JSON.parse(sessionStorage.getItem('usd_booking_slots') || '{}');
+        if (isInternationalBooking(savedSlots)) return savedSlots.doctor_name || '';
         const revSummary = parseReviewSummaryFromChatHistory();
         if (revSummary.doctor) return revSummary.doctor;
         const userCity = sessionStorage.getItem('usd_user_city') || extractUserCity();
@@ -1951,7 +1962,6 @@
                 return existing.trim();
             }
         }
-        const savedSlots = JSON.parse(sessionStorage.getItem('usd_booking_slots') || '{}');
         if (savedSlots.doctor_name) {
             if (userCity) {
                 const dCity = getCityForDoctor(savedSlots.doctor_name);
@@ -2003,11 +2013,12 @@
     }
 
     function extractUserPhone() {
+        const savedSlots = JSON.parse(sessionStorage.getItem('usd_booking_slots') || '{}');
+        if (isInternationalBooking(savedSlots)) return savedSlots.phone || '';
         const revSummary = parseReviewSummaryFromChatHistory();
         if (revSummary.phone) return revSummary.phone;
         const existing = sessionStorage.getItem('usd_user_phone');
         if (existing && existing.trim()) return existing.trim();
-        const savedSlots = JSON.parse(sessionStorage.getItem('usd_booking_slots') || '{}');
         if (savedSlots.phone) return savedSlots.phone;
 
         for (let i = 0; i < chatHistory.length; i++) {
@@ -2024,11 +2035,12 @@
     }
 
     function extractUserPincode() {
+        const savedSlots = JSON.parse(sessionStorage.getItem('usd_booking_slots') || '{}');
+        if (isInternationalBooking(savedSlots)) return savedSlots.pincode || '';
         const revSummary = parseReviewSummaryFromChatHistory();
         if (revSummary.pincode) return revSummary.pincode;
         const existing = sessionStorage.getItem('usd_user_pincode');
         if (existing && existing.trim()) return existing.trim();
-        const savedSlots = JSON.parse(sessionStorage.getItem('usd_booking_slots') || '{}');
         if (savedSlots.pincode) return savedSlots.pincode;
 
         for (let i = 0; i < chatHistory.length; i++) {
@@ -2046,51 +2058,15 @@
         return '';
     }
 
-    function buildReconnectPrompt(savedSlots, userName) {
-        const fn = (savedSlots && savedSlots.first_name) || userName || '';
-        const concern = (savedSlots && savedSlots.message) || '';
-        const pin = (savedSlots && savedSlots.pincode) || '';
-        const city = (savedSlots && savedSlots.city) || '';
-        const doc = (savedSlots && savedSlots.doctor_name) || '';
-        const phone = (savedSlots && savedSlots.phone) || '';
-        const isSubmitted = Boolean(savedSlots && savedSlots.is_submitted);
-
-        if (isSubmitted) {
-            return `SYSTEM INSTRUCTION: The user has reconnected. In the conversation's active language (Gujarati/Hindi/English), warmly welcome them back ${fn ? fn : ''}, acknowledge that their appointment request is already submitted, and ask how else we can assist them today.`;
-        }
-
-        // Stage 1: No name provided yet
-        if (!fn || fn.length < 2 || ['none', 'null', 'user', 'patient'].includes(fn.toLowerCase())) {
-            return `SYSTEM INSTRUCTION: The user has reconnected. In the conversation's active language (Gujarati/Hindi/English), warmly welcome them back and ask: 'Let's continue booking your appointment. Could you please share your name?'`;
-        }
-
-        // Stage 2: Name known, but dental concern missing
-        if (!concern || concern.length < 2 || ['none', 'null', 'dental consultation appointment request'].includes(concern.toLowerCase())) {
-            return `SYSTEM INSTRUCTION: The user ${fn} has reconnected. In the conversation's active language (Gujarati/Hindi/English), warmly welcome them back by name, and continue the appointment booking by asking what dental concern, tooth pain, or smile goal they would like to consult with our doctor about.`;
-        }
-
-        // Stage 3: Concern known, but Pincode & City missing
-        const digitsPin = pin.replace(/\D/g, '');
-        const hasCity = city && city.length >= 2 && !['india', 'none', 'null'].includes(city.toLowerCase());
-        if (digitsPin.length !== 6 && !hasCity) {
-            return `SYSTEM INSTRUCTION: The user ${fn} has reconnected. In the conversation's active language (Gujarati/Hindi/English), warmly welcome them back by name. Continue booking their consultation for their dental concern (${concern}): ask for their 6-digit area pincode so we can locate their nearest USD Certified Smile Designer.`;
-        }
-
-        // Stage 4: Doctor not selected and Phone missing
-        const digitsPhone = phone.replace(/\D/g, '');
-        if (!doc && digitsPhone.length < 10) {
-            const loc = digitsPin.length === 6 ? `pincode ${digitsPin}` : (hasCity ? `city ${city}` : 'area');
-            return `SYSTEM INSTRUCTION: The user ${fn} has reconnected. In the conversation's active language (Gujarati/Hindi/English), warmly welcome them back by name. Continue from where we left off: ask if they would like to select one of our nearest doctors near their ${loc}, or let our team guide them to the best doctor.`;
-        }
-
-        // Stage 5: Doctor decided/team guidance chosen, but Phone number missing
-        if (digitsPhone.length < 10) {
-            return `SYSTEM INSTRUCTION: The user ${fn} has reconnected. In the conversation's active language (Gujarati/Hindi/English), warmly welcome them back by name. Continue the appointment booking by asking for their 10-digit mobile number so our team can contact them for the appointment.`;
-        }
-
-        // Stage 6: All details gathered, waiting for final review/submission
-        const locStr = digitsPin.length === 6 ? (hasCity ? `${city} (${digitsPin})` : digitsPin) : city;
-        return `SYSTEM INSTRUCTION: The user ${fn} has reconnected. In the conversation's active language (Gujarati/Hindi/English), warmly welcome them back by name. Summarize their details (Name: ${fn}, Concern: ${concern}, Location: ${locStr}, Phone: ${digitsPhone.slice(-10)}) and ask if they would like to submit this appointment request now.`;
+    function sendBookingResume() {
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        const savedSlots = sessionStorage.getItem('usd_session_slots') || sessionStorage.getItem('usd_booking_slots');
+        socket.send(JSON.stringify({
+            type: 'resume_booking',
+            isVoiceMode,
+            slots: JSON.parse(savedSlots || '{}'),
+            booking_resume: JSON.parse(sessionStorage.getItem('usd_booking_resume') || '{}'),
+        }));
     }
 
     // Spoken answer to "continue the conversation or start a new one?"; returns true when it picked an option
@@ -2116,42 +2092,7 @@
         if (isContinue) {
             // Option 1: Continue previous conversation
             updateState('thinking');
-            const savedSlots = JSON.parse(sessionStorage.getItem('usd_booking_slots') || '{}');
-            const userName = sessionStorage.getItem('usd_user_name') || extractUserName();
-            const userConcern = sessionStorage.getItem('usd_user_concern') || extractUserConcern();
-            const userCity = sessionStorage.getItem('usd_user_city') || extractUserCity();
-            const userDoctor = sessionStorage.getItem('usd_user_doctor') || extractUserDoctor() || (savedSlots.doctor_name || '');
-            const userPhone = sessionStorage.getItem('usd_user_phone') || extractUserPhone() || (savedSlots.phone || '');
-            const userPincode = sessionStorage.getItem('usd_user_pincode') || extractUserPincode() || (savedSlots.pincode || '');
-
-            if (userName) {
-                const parts = userName.split(' ');
-                if (!savedSlots.first_name) savedSlots.first_name = parts[0];
-                if (!savedSlots.last_name) savedSlots.last_name = parts.length > 1 ? parts.slice(1).join(' ') : '-';
-            }
-            if (userCity && !savedSlots.city) savedSlots.city = userCity;
-            if (userConcern && !savedSlots.message) savedSlots.message = userConcern;
-            if (userDoctor && !savedSlots.doctor_name) savedSlots.doctor_name = userDoctor;
-            if (userPhone && !savedSlots.phone) savedSlots.phone = userPhone;
-            if (userPincode && !savedSlots.pincode) savedSlots.pincode = userPincode;
-            sessionStorage.setItem('usd_booking_slots', JSON.stringify(savedSlots));
-
-            const reconnectInstruction = buildReconnectPrompt(savedSlots, userName);
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'text_input',
-                    text: reconnectInstruction,
-                    history: chatHistory,
-                    isVoiceMode: isVoiceMode,
-                    userName: userName,
-                    userConcern: userConcern,
-                    userCity: userCity,
-                    userDoctor: userDoctor,
-                    userPhone: userPhone,
-                    userPincode: userPincode,
-                    slots: savedSlots
-                }));
-            }
+            sendBookingResume();
         } else {
             // Option 2: Start a new conversation
             document.getElementById('usd-chat-log').innerHTML = "";
@@ -2165,6 +2106,7 @@
             sessionStorage.removeItem('usd_user_pincode');
             sessionStorage.removeItem('usd_booking_slots');
             sessionStorage.removeItem('usd_session_slots');
+            sessionStorage.removeItem('usd_booking_resume');
             sessionStorage.removeItem('usd_submission_id');
             sessionStorage.removeItem('usd_api_id');
             sessionStorage.removeItem('usd_chat_active');
@@ -2311,16 +2253,6 @@
                     conversation_type: currentConvType
                 }));
 
-                // Restore slots ONLY if this is an active reconnect with ongoing chat history
-                const isChatActive = sessionStorage.getItem('usd_chat_active') === 'true';
-                const savedSlotsStr = sessionStorage.getItem('usd_session_slots');
-                if (savedSlotsStr && isChatActive && chatHistory && chatHistory.length > 0) {
-                    socket.send(JSON.stringify({
-                        type: 'restore_slots',
-                        slots: JSON.parse(savedSlotsStr)
-                    }));
-                }
-
                 await initAudio();
                 updateState('thinking');
 
@@ -2341,55 +2273,14 @@
                             isVoiceMode: isVoiceMode
                         }));
                     }
-                } else if (chatHistory.length > 0 || sessionStorage.getItem('usd_chat_history')) {
+                } else if (chatHistory.length > 0 || sessionStorage.getItem('usd_chat_history') || sessionStorage.getItem('usd_session_slots')) {
                     window.isReconnectManual = false;
                     if (!chatHistory.length && sessionStorage.getItem('usd_chat_history')) {
                         try { chatHistory = JSON.parse(sessionStorage.getItem('usd_chat_history')); } catch (e) { }
                     }
-                    const savedSlots = JSON.parse(sessionStorage.getItem('usd_booking_slots') || '{}');
-                    const userName = sessionStorage.getItem('usd_user_name') || extractUserName();
-                    const userConcern = sessionStorage.getItem('usd_user_concern') || extractUserConcern();
-                    const userCity = sessionStorage.getItem('usd_user_city') || extractUserCity();
-                    const userDoctor = sessionStorage.getItem('usd_user_doctor') || extractUserDoctor() || (savedSlots.doctor_name || '');
-                    const userPhone = sessionStorage.getItem('usd_user_phone') || extractUserPhone() || (savedSlots.phone || '');
-                    const userPincode = sessionStorage.getItem('usd_user_pincode') || extractUserPincode() || (savedSlots.pincode || '');
-
-                    if (userName && !userName.includes('[') && !userName.includes('-') && !userName.includes(':') && userName.length <= 25) {
-                        const parts = userName.split(' ');
-                        if (!savedSlots.first_name) savedSlots.first_name = parts[0];
-                        if (!savedSlots.last_name) savedSlots.last_name = parts.length > 1 ? parts.slice(1).join(' ') : '-';
-                    } else if (userName && (userName.includes('[') || userName.includes('-') || userName.includes(':') || userName.length > 25)) {
-                        sessionStorage.removeItem('usd_user_name');
-                        delete savedSlots.first_name;
-                        delete savedSlots.last_name;
-                    }
-                    if (userCity && !savedSlots.city) savedSlots.city = userCity;
-                    if (userConcern && !savedSlots.message) savedSlots.message = userConcern;
-                    if (userDoctor && !savedSlots.doctor_name) savedSlots.doctor_name = userDoctor;
-                    if (userPhone && !savedSlots.phone) savedSlots.phone = userPhone;
-                    if (userPincode && !savedSlots.pincode) savedSlots.pincode = userPincode;
-                    const userApiId = sessionStorage.getItem('usd_api_id');
-                    if (userApiId && !savedSlots.api_id) savedSlots.api_id = userApiId;
-                    sessionStorage.setItem('usd_booking_slots', JSON.stringify(savedSlots));
-
                     if (window.clearSilenceTimer) window.clearSilenceTimer();
                     silenceNudgeCount = 0;
-                    const reconnectInstruction = buildReconnectPrompt(savedSlots, userName);
-                    if (socket.readyState === WebSocket.OPEN) {
-                        socket.send(JSON.stringify({
-                            type: 'text_input',
-                            text: reconnectInstruction,
-                            history: chatHistory,
-                            isVoiceMode: isVoiceMode,
-                            userName: userName,
-                            userConcern: userConcern,
-                            userCity: userCity,
-                            userDoctor: userDoctor,
-                            userPhone: userPhone,
-                            userPincode: userPincode,
-                            slots: savedSlots
-                        }));
-                    }
+                    sendBookingResume();
                 } else {
                     if (socket.readyState === WebSocket.OPEN) {
                         socket.send(JSON.stringify({
@@ -2590,6 +2481,17 @@
             socket.onmessage = async (event) => {
                 const data = JSON.parse(event.data);
 
+                if (data.type === 'booking_caption') {
+                    const bubble = document.querySelector('[data-caption-id="' + CSS.escape(data.captionId) + '"] .usd-msg-text');
+                    const text = cleanDisplayText(data.text);
+                    if (bubble) bubble.innerText = text;
+                    for (const message of chatHistory) {
+                        if (bookingCaptionIds.get(message) === data.captionId) message.parts[0].text = text;
+                    }
+                    saveHistory();
+                    return;
+                }
+
                 if (data.type === 'user_speaking_status') {
                     if (data.is_speaking) {
                         window.isUserSpeaking = true;
@@ -2605,6 +2507,20 @@
                     localTurnId = data.turnId;
                 }
 
+                if (data.type === 'stop_booking_audio') {
+                    bookingAudioStopCount++;
+                    audioChunkQueue = [];
+                    activeSources.forEach(source => { try { source.stop(); } catch (e) { } });
+                    activeSources = [];
+                    nextPlayTime = 0;
+                    if (activeBotMessageDiv) {
+                        activeBotMessageDiv.dataset.rawText = data.text || "";
+                        const bubble = activeBotMessageDiv.querySelector('.usd-msg-text');
+                        if (bubble) bubble.innerText = cleanLiveStreamText(data.text || "");
+                    }
+                    updateState('listening');
+                    return;
+                }
                 if (data.type === 'interrupted' || (data.serverContent && data.serverContent.interrupted)) {
                     if (IOS_DEBUG_METER) {
                         iosDebugInterrupts++;
@@ -2873,7 +2789,7 @@
                         if (activeBotMessageDiv) {
                             const botP = activeBotMessageDiv.querySelector('.usd-msg-text');
                             if (botP) {
-                                if (!botP.innerText.trim() || finalText.length >= botP.innerText.trim().length) {
+                                if (data.replaceProvisional || !botP.innerText.trim() || finalText.length >= botP.innerText.trim().length) {
                                     botP.innerText = finalText;
                                 }
                             }
@@ -2886,7 +2802,7 @@
                             if (lastMsg && lastMsg.classList.contains('usd-msg-bot') && (lastMsg.dataset.isLive === "true" || lastMsg.querySelector('.usd-msg-text')?.innerText.trim() === finalText)) {
                                 const botP = lastMsg.querySelector('.usd-msg-text');
                                 if (botP) {
-                                    if (!botP.innerText.trim() || finalText.length >= botP.innerText.trim().length) {
+                                    if (data.replaceProvisional || !botP.innerText.trim() || finalText.length >= botP.innerText.trim().length) {
                                         botP.innerText = finalText;
                                     }
                                 }
@@ -2906,6 +2822,7 @@
                         if (tagToUse && usdLinks[tagToUse]) {
                             appendLinkButton(lastBotMessageDiv, tagToUse);
                         }
+                        if (data.captionId && chatHistory.length) bookingCaptionIds.set(chatHistory[chatHistory.length - 1], data.captionId);
 
                         activeBotMessageDiv = null;
                         const log = document.getElementById('usd-chat-log');
@@ -2913,6 +2830,9 @@
                     }
                 }
                 else if (data.type === 'sync_slots') {
+                    if (data.booking_resume) {
+                        sessionStorage.setItem('usd_booking_resume', JSON.stringify(data.booking_resume));
+                    }
                     if (data.slots) {
                         sessionStorage.setItem('usd_session_slots', JSON.stringify(data.slots));
                         sessionStorage.setItem('usd_booking_slots', JSON.stringify(data.slots));
@@ -2952,6 +2872,9 @@
                     const interimBox = document.getElementById('usd-interim-text');
                     if (interimBox) { interimBox.innerText = ""; }
 
+                    if (data.booking_resume) {
+                        sessionStorage.setItem('usd_booking_resume', JSON.stringify(data.booking_resume));
+                    }
                     if (data.slots) {
                         sessionStorage.setItem('usd_booking_slots', JSON.stringify(data.slots));
                         sessionStorage.setItem('usd_session_slots', JSON.stringify(data.slots));
@@ -3019,6 +2942,10 @@
                         }
                     }
 
+                    if (data.captionId && lastBotMessageDiv && chatHistory.length) {
+                        lastBotMessageDiv.dataset.captionId = data.captionId;
+                        bookingCaptionIds.set(chatHistory[chatHistory.length - 1], data.captionId);
+                    }
                     if (finalTag && usdLinks[finalTag]) {
                         if (lastBotMessageDiv) {
                             appendLinkButton(lastBotMessageDiv, finalTag);
@@ -3036,6 +2963,25 @@
                     if (!isVoiceMode) {
                         updateState('listening');
                         if (finalTag === '[END_CHAT]') setTimeout(() => closeChat(true), 2000);
+                    } else if (data.resumeSpeech) {
+                        const resumeSocket = socket;
+                        const resumeTurn = localTurnId;
+                        fetch("{% url 'api_tts_slash' %}", {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ text: data.resumeSpeech }),
+                        })
+                            .then(response => response.ok ? response.json() : {})
+                            .then(audio => {
+                                if (audio.audioBase64 && socket === resumeSocket && localTurnId === resumeTurn && isVoiceMode) {
+                                    audioChunkQueue.push(audio);
+                                    processAudioQueue();
+                                }
+                            })
+                            .catch(error => console.error("Reconnect speech error", error))
+                            .finally(() => {
+                                if (socket === resumeSocket && localTurnId === resumeTurn) checkBotFinishedSpeaking();
+                            });
                     } else {
                         checkBotFinishedSpeaking();
                         if (finalTag === '[END_CHAT]') setTimeout(() => closeChat(true), 2000);
@@ -3211,6 +3157,7 @@
         sessionStorage.removeItem('usd_user_pincode');
         sessionStorage.removeItem('usd_booking_slots');
         sessionStorage.removeItem('usd_session_slots');
+        sessionStorage.removeItem('usd_booking_resume');
         sessionStorage.removeItem('usd_submission_id');
         sessionStorage.removeItem('usd_api_id');
         sessionStorage.removeItem('usd_chat_active');
@@ -3280,10 +3227,10 @@
             const savedSlots = JSON.parse(sessionStorage.getItem('usd_booking_slots') || '{}');
             const userName = sessionStorage.getItem('usd_user_name') || extractUserName();
             const userConcern = sessionStorage.getItem('usd_user_concern') || extractUserConcern();
-            const userCity = sessionStorage.getItem('usd_user_city') || extractUserCity();
-            const userDoctor = sessionStorage.getItem('usd_user_doctor') || (savedSlots.doctor_name || '');
-            const userPhone = sessionStorage.getItem('usd_user_phone') || (savedSlots.phone || '');
-            const userPincode = sessionStorage.getItem('usd_user_pincode') || extractUserPincode() || (savedSlots.pincode || '');
+            const userCity = isInternationalBooking(savedSlots) ? (savedSlots.city || '') : (sessionStorage.getItem('usd_user_city') || extractUserCity());
+            const userDoctor = isInternationalBooking(savedSlots) ? (savedSlots.doctor_name || '') : (sessionStorage.getItem('usd_user_doctor') || (savedSlots.doctor_name || ''));
+            const userPhone = isInternationalBooking(savedSlots) ? (savedSlots.phone || '') : (sessionStorage.getItem('usd_user_phone') || (savedSlots.phone || ''));
+            const userPincode = isInternationalBooking(savedSlots) ? (savedSlots.pincode || '') : (sessionStorage.getItem('usd_user_pincode') || extractUserPincode() || (savedSlots.pincode || ''));
             if (userPincode && !savedSlots.pincode) savedSlots.pincode = userPincode;
 
             socket.send(JSON.stringify({

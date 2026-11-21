@@ -40,10 +40,11 @@ import httpx
 from typing import Optional, List, Dict, Tuple, Any
 from voice_agent.utils.constants import INACTIVITY_TIMEOUT
 from voice_agent.utils.helpers import clean_assistant_text, clean_hallucinations, extract_slots_from_review_summary, is_submit_review_summary, transliterate_to_english, strip_diacritics, ALL_CERTIFIED_DOCTORS_LIST, DOCTOR_HOME_CITIES, MULTILINGUAL_CITY_MAP, is_cancel_submit, is_explicit_submit_command, is_affirmative_submit, is_cancel_response_text, is_submit_response_text, _norm_phon
+from voice_agent.utils.helpers import consultation_declined_in_text, consultation_requested_in_text
 from voice_agent.navigation.commands import detect_best_tag, detect_best_tag_with_fallback
 from voice_agent.audio.transcriber import transcribe_voice_data
 from voice_agent.services.appointment_service import submit_consultation_appointment
-from voice_agent.gemini.client import APPOINTMENT_TOOL_DECLARATION
+from voice_agent.gemini.client import APPOINTMENT_TOOL_DECLARATION, VOICE_LANGUAGE_RULE
 
 _CHAT_HTTP_CLIENT = httpx.AsyncClient(
     timeout=12.0,
@@ -290,7 +291,7 @@ def extract_travel_destination_request(text_to_search: str) -> Optional[str]:
     'Mumbai mein dentist kaun hai?', 'મને મુંબઈના ડેન્ટિસ્ટના નામ જણાવો ને',
     'who is the dentist in mumbai', 'mumbai doctors', 'dentist in mumbai', etc.
     """
-    if not text_to_search:
+    if not text_to_search or text_to_search.strip().startswith("SYSTEM INSTRUCTION"):
         return None
     import re
     tl = text_to_search.lower().strip()
@@ -312,6 +313,8 @@ def extract_travel_destination_request(text_to_search: str) -> Optional[str]:
         m = re.search(pat, tl, re.IGNORECASE)
         if m:
             cand = m.group(1).strip()
+            if cand in {"nearest", "nearby", "closest"}:
+                continue
             city = extract_city_from_text(cand, asking_for_city=True)
             if city:
                 return city
@@ -813,7 +816,26 @@ def text_asks_profession(text):
     return bool(t) and any(p in t for p in _PROFESSION_ASK_PHRASES)
 
 
-def get_review_summary_prompt(lang, display_name, ph, ct, pin, cn, dr, is_update=False):
+_COUNTRY_LABELS = {"gu": "દેશ", "hi": "देश", "mr": "देश", "bn": "দেশ", "ta": "நாடு", "te": "దేశం", "kn": "ದೇಶ",
+                   "ml": "രാജ്യം", "pa": "ਦੇਸ਼", "or": "ଦେଶ", "en": "Country"}
+
+
+def get_review_summary_prompt(lang, display_name, ph, ct, pin, cn, dr, is_update=False, country=None):
+    """Review summary; for an international booking (country given) a Country line follows the City line."""
+    prompt = _get_review_summary_prompt_base(lang, display_name, ph, ct, pin or "-", cn, dr, is_update=is_update)
+    if not country:
+        return prompt
+    label = _COUNTRY_LABELS.get((lang or "en")[:2].lower(), "Country")
+    lines = prompt.split(chr(10))
+    for i, line in enumerate(lines):
+        if line.startswith("- ") and line.rstrip().endswith(f": {ct}"):
+            lines.insert(i + 1, f"- {label}: {country}")
+            break
+    out = chr(10).join(lines)
+    return out.replace("ALL 6 LINES", "ALL 7 LINES").replace("ALL 5 LINES", "ALL 6 LINES")
+
+
+def _get_review_summary_prompt_base(lang, display_name, ph, ct, pin, cn, dr, is_update=False):
     import random
     if lang in ["gu", "hi", "mr", "bn", "ta", "te", "kn", "ml", "pa", "or", "en"]:
         lang_key = lang
@@ -996,10 +1018,10 @@ def get_review_summary_prompt(lang, display_name, ph, ct, pin, cn, dr, is_update
         }
         return prompts.get(lang_key, f"NEXT STEP: All details are collected! Do NOT re-ask any details. Present the complete all-at-once review summary with a natural varied opening (such as '{en_open}') and instruct the user to write/say 'submit' or 'cancel':\n'{en_open}\n- Name: {display_name}\n- Phone: {ph}\n- City: {ct}\n- Pincode: {pin}\n- Concern: {cn}\n- Doctor: {dr_en}\n\nPlease say 'submit' to submit this appointment request to our clinic team, or say 'cancel' to cancel it.\n🚨 ZERO-CUTOFF MANDATE: YOU MUST RECITE ALL 6 LINES AND SPEAK THE FULL CLOSING SENTENCE WITH BOTH 'SUBMIT' AND 'CANCEL' TO THE VERY LAST WORD WITHOUT CUTTING OFF OR STOPPING EARLY!")
 
-def build_review_summary_text(lang, display_name, ph, ct, pin, cn, dr, is_update=False):
+def build_review_summary_text(lang, display_name, ph, ct, pin, cn, dr, is_update=False, country=None):
     """The exact review summary text (opening, all detail lines and the full 'submit' / 'cancel' closing
     sentence) - taken from the quoted example inside get_review_summary_prompt so both stay identical."""
-    prompt = get_review_summary_prompt(lang, display_name, ph, ct, pin, cn, dr, is_update=is_update)
+    prompt = get_review_summary_prompt(lang, display_name, ph, ct, pin, cn, dr, is_update=is_update, country=country)
     start = prompt.find(":\n'")
     body = prompt[start + 3:] if start >= 0 else prompt
     return body.split("\n🚨")[0].strip().rstrip("'").strip()
@@ -1115,6 +1137,179 @@ class ConversationManager:
         self.session = session
         self.send_json = send_json_callback
         self.gemini_client = gemini_client
+
+    async def resume_booking(self, data):
+        """Resume from the last server snapshot without treating reconnect as a patient turn."""
+        from voice_agent.services.dentist_service import format_city_confirm_speech, get_pincode_city_info
+        from voice_agent.utils import country_utils as cu
+
+        session = self.session
+        slots = session.booking_slots
+        saved = data.get("slots")
+        if isinstance(saved, dict):
+            for key in (
+                "first_name", "last_name", "email", "message", "country_code", "city", "pincode",
+                "phone", "doctor_name", "clinic_city", "submission_id", "api_id", "godaddy_id",
+            ):
+                if slots.get(key) in (None, "", "--") and saved.get(key) and isinstance(saved[key], (str, int)):
+                    slots[key] = saved[key]
+            for key in ("is_submitted", "is_cancel"):
+                if saved.get(key) is True:
+                    slots[key] = True
+
+        for key in ("city", "clinic_city"):
+            if str(slots.get(key) or "").strip().casefold() in {"nearest", "nearby", "closest"}:
+                slots[key] = ""
+        session.is_travel_booking_turn = False
+        session.travel_destination_city = None
+        session.clear_voice_intercept_flags()
+
+        resume = data.get("booking_resume")
+        if not isinstance(resume, dict):
+            resume = {}
+        field = session.asking_for_field or resume.get("field")
+        code = str(slots.get("country_code") or "").upper()
+        if code not in cu.ALL_COUNTRIES:
+            # Older snapshots can contain an Indian PIN and city without a country field.
+            code = "IN" if field != "country" and slots.get("city") and cu.validate_postal(slots.get("pincode"), "IN") else ""
+        slots["country_code"] = code
+        slots["country"] = cu.country_name(code) if code else ""
+        session.consultation_agreed |= resume.get("consultation_agreed") is True or bool(code)
+        session.consultation_declined |= resume.get("consultation_declined") is True
+        session.doctor_guidance_asked |= resume.get("doctor_guidance_asked") is True
+
+        saved_language = str(resume.get("language") or "")
+        if re.fullmatch(r"(?:en|gu|hi|mr|bn|ta|te|kn|ml|pa|or)-IN", saved_language):
+            session.current_language = saved_language
+            session.is_language_established = True
+        lang = session.current_language[:2]
+        welcome, concern_question, consent_question, submitted, cancelled = {
+            "gu": ("ફરી સ્વાગત છે.", "તમને દાંતની શું સમસ્યા છે?",
+                   "શું હું તમારી કન્સલ્ટેશન બુક કરવામાં મદદ કરું?",
+                   "તમારી અપૉઇન્ટમેન્ટની વિનંતી સબમિટ થઈ ગઈ છે.", "હું તમને કેવી રીતે મદદ કરી શકું?"),
+            "hi": ("फिर से स्वागत है।", "आपको दाँतों की क्या समस्या है?",
+                   "क्या मैं आपका कंसल्टेशन बुक करने में मदद करूँ?",
+                   "आपकी अपॉइंटमेंट की रिक्वेस्ट भेज दी गई है।", "मैं आपकी क्या मदद कर सकती हूँ?"),
+        }.get(lang, (
+            "Welcome back.", "What dental concern would you like help with?",
+            "Would you like me to help you book a consultation?",
+            "Your appointment request has been submitted.", "How can I help you today?",
+        ))
+
+        first = str(slots.get("first_name") or "").strip()
+        last = str(slots.get("last_name") or "").strip()
+        if first and not session.user_name:
+            session.user_name = f"{first} {last}".strip() if last and last != "-" else first
+        if not session.user_concern:
+            session.user_concern = str(slots.get("message") or "").strip()
+        if session.user_concern:
+            slots["message"] = session.user_concern
+
+        intl = cu.is_international(code)
+        pin = cu.validate_postal(slots.get("pincode"), code) if code else ""
+        national = cu.normalize_phone(slots.get("phone"), code) if code else ""
+        if national:
+            slots["phone"] = cu.format_e164(national, code) if intl else national
+        city = slots.get("city")
+        if code == "IN" and pin and city:
+            session.city_pincode_locked = True
+            session.city_manually_confirmed = True
+
+        spoken_question = None
+        if slots.get("is_submitted") and not slots.get("is_cancel"):
+            field, question = None, submitted
+        elif slots.get("is_cancel") or session.consultation_declined:
+            field, question = None, cancelled
+        elif not session.user_name:
+            field, question = "name", get_missing_field_message(lang, "name")
+        elif not session.user_concern:
+            field, question = "concern", concern_question
+        elif not session.consultation_agreed:
+            field, question = "consultation", consent_question
+        elif not code:
+            field, question = "country", cu.intl_text("ask_country", lang)
+        elif cu.missing_brazil_cep(slots):
+            field, question = "intl_postal", cu.intl_text("ask_postal", lang, code)
+        elif intl and not city:
+            pending = session.pending_intl_city or resume.get("pending_intl_city")
+            if pin and not pending and not session.intl_city_options:
+                places = await asyncio.to_thread(cu.lookup_postal_places, pin, code)
+                if len(places) == 1:
+                    pending = places[0]
+                else:
+                    session.intl_city_options = places
+            if pin and isinstance(pending, str) and pending:
+                session.pending_intl_city = pending
+                field, key = "intl_city_confirm", "confirm_city"
+            elif pin and session.intl_city_options:
+                field, key = "intl_city", "choose_city"
+            elif field == "intl_city" or not cu.has_postal_code(code):
+                field, key = "intl_city", "ask_city"
+            else:
+                field, key = "intl_postal", "ask_postal"
+            if key not in ("confirm_city", "choose_city"):
+                slots["pincode"] = ""
+            question = cu.intl_text(key, lang, code, postal=pin or "", city=session.intl_city_label)
+        elif not intl and (field in ("pincode", "city_confirmation") or not pin or not city):
+            pending_pin = cu.validate_postal(
+                getattr(session, "pending_pincode", None) or resume.get("pending_pincode") or (pin if not city else ""), "IN",
+            )
+            pending_city = getattr(session, "pending_city", None) or resume.get("pending_city")
+            display_city = getattr(session, "pending_display_city", None) or resume.get("pending_display_city")
+            if pending_pin and not pending_city:
+                info = await asyncio.to_thread(get_pincode_city_info, pending_pin) or {}
+                pending_city, display_city = info.get("canonical_city"), info.get("display_city")
+            if pending_pin and isinstance(pending_city, str) and pending_city:
+                session.pending_pincode = pending_pin
+                session.pending_city = pending_city
+                session.pending_display_city = display_city or pending_city
+                session.city_confirm_needed = True
+                session.city_pincode_locked = False
+                field = "city_confirmation"
+                question = format_city_confirm_speech(pending_pin, session.pending_display_city, lang)
+            else:
+                field, question = "pincode", get_missing_field_message(lang, "pincode")
+        elif not national or field == "phone":
+            if not intl and not slots.get("doctor_name") and (
+                field in ("doctor", "doctor_selection") or (field != "phone" and not session.doctor_guidance_asked)
+            ):
+                field = "doctor_selection"
+                question = {
+                    "gu": "તમે કોઈ ડૉક્ટર પસંદ કરવા માંગો છો કે અમારી ટીમ તમને માર્ગદર્શન આપે?",
+                    "hi": "क्या आप किसी डॉक्टर को चुनना चाहेंगे, या हमारी टीम आपकी मदद करे?",
+                }.get(lang, "Would you like to choose a doctor, or would you prefer help from our team?")
+            else:
+                field = "phone"
+                question = cu.intl_text("ask_phone", lang, code) if intl else get_missing_field_message(lang, "phone")
+        else:
+            field = None
+            question = build_review_summary_text(
+                lang, session.user_name, slots["phone"], city, pin or "-", session.user_concern,
+                slots.get("doctor_name"), country=slots["country"] if intl else None,
+            )
+            session.last_review_summary_slots = {**slots, "user_name": session.user_name, "user_concern": session.user_concern}
+            session.last_review_summary_text = question
+            spoken_question = question.rsplit("\n\n", 1)[-1]
+
+        session.asking_for_field = field
+        session.latest_client_is_voice_mode = data.get("isVoiceMode") is not False
+        session.latest_typed_user_text = ""
+        session.current_user_transcription = ""
+        session.user_transcription_task = None
+        session.current_voice_turn_id += 1
+        if session.consultation_agreed and not slots.get("is_submitted") and question != cancelled:
+            welcome += " " + {
+                "gu": "ચાલો, તમારી બુકિંગ આગળ વધારીએ.",
+                "hi": "चलिए, आपकी बुकिंग आगे बढ़ाते हैं।",
+            }.get(lang, "Let's continue your booking.")
+        reply = f"{welcome} {question}"
+        session.add_transcript_turn("model", reply)
+        await self.send_json({
+            "type": "reply_complete", "botText": reply, "slots": dict(slots),
+            "turnId": session.current_voice_turn_id, "resumeSpeech": f"{welcome} {spoken_question or question}",
+        })
+        if self.gemini_client and session.gemini_ws and session.setup_complete_event.is_set():
+            await self.gemini_client.sync_slots_to_gemini()
 
     def _append_profession_question(self, msg, lang):
         """After the booking ends (submitted or cancelled) the next question is the profession, if never asked."""
@@ -1272,7 +1467,232 @@ class ConversationManager:
 
         return None
 
-    def update_session_memory(self, user_text="", history=None, data=None):
+    # Words in Riya's question that mean she asked for the country (Step 3.0)
+    _COUNTRY_ASK_RE = re.compile(r"(which country|what country|country do you|કયા દેશ|किस देश|कोणत्या देशात|কোন দেশে|எந்த நாட்டில்|ఏ దేశంలో|ಯಾವ ದೇಶದ|ഏത് രാജ്യത്ത|ਕਿਸ ਦੇਸ਼|କେଉଁ ଦେଶ)", re.IGNORECASE)
+
+    # Words that show the patient is asking / talking, not naming a city ("fetch from pincode?", "why?")
+    _NOT_CITY_RE = re.compile(r"\b(pincode|pin|postal|zip|code|fetch|why|what|how|which|where|when|who|can|could|please|"
+                              r"don'?t|know|not|no|yes|ok|okay|thanks|thank|sorry|repeat|again|kya|kyu|kaise|nahi|haan|"
+                              r"doctor|dentist|appointment|price|cost)\b", re.IGNORECASE)
+
+    @classmethod
+    def _looks_like_city(cls, text):
+        t = str(text or "").strip(" .,!")
+        return (2 <= len(t) <= 40 and len(t.split()) <= 4 and "?" not in t
+                and not any(ch.isdigit() for ch in t) and not cls._NOT_CITY_RE.search(t))
+
+    def _set_country(self, code):
+        from voice_agent.utils import country_utils as cu
+        bs = self.session.booking_slots
+        bs["country_code"] = code
+        bs["country"] = cu.country_name(code)
+        self.session.country_unclear = False
+        print(f"[COUNTRY] Patient country set to {bs['country']} ({code})")
+
+    def _update_country_and_international(self, text, history):
+        """Step 3.0 + the international booking steps. India keeps the existing pincode flow untouched.
+        Returns True when this booking is international (country_code != 'IN')."""
+        with self.session.intl_location_lock:
+            return self._apply_country_and_international(text, history)
+
+    def _apply_country_and_international(self, text, history):
+        from voice_agent.utils import country_utils as cu
+        s = self.session
+        bs = s.booking_slots
+        code = bs.get("country_code") or ""
+        if getattr(s, "intl_location_handled_turn", None) == s.current_voice_turn_id:
+            return cu.is_international(bs)
+
+        # An Indian pincode the patient already confirmed means India (the pincode lookup is India-only)
+        if not code and bs.get("pincode") and getattr(s, "city_pincode_locked", False):
+            self._set_country("IN")
+            return False
+
+        last_bot = ""
+        for turn in reversed(history or []):
+            if turn.get("role") in ["model", "assistant"]:
+                last_bot = get_turn_text(turn)
+                break
+        asked_country = getattr(s, "asking_for_field", None) == "country" or (
+            not code and bool(self._COUNTRY_ASK_RE.search(last_bot or ""))
+        )
+
+        # The same user turn can reach update_session_memory twice; process it once, or a postal code
+        # accepted on the first pass is re-read as a (too short) phone number on the second pass
+        if getattr(s, "_intl_last_text", None) == text and getattr(s, "_intl_last_turn", None) == s.current_voice_turn_id:
+            return cu.is_international(bs)
+        s._intl_last_text, s._intl_last_turn = text, s.current_voice_turn_id
+        s.intl_reply_key = None
+
+        # Only change the country on a new country answer or an explicit correction.
+        digits = re.sub(r"\D", "", text)
+        explicit_change = bool(re.search(r"\b(change|actually|wrong|badal|galat)\b", text, re.IGNORECASE))
+        country_edit = explicit_change and bool(re.search(r"\b(country|live|reside|stay|from)\b", text, re.IGNORECASE))
+        cand = cu.resolve_country(text, fuzzy=asked_country) if not digits and (not code or asked_country or country_edit) else None
+        if code and cand and cand != code:
+            for k in ("pincode", "city", "phone", "doctor_name"):
+                bs[k] = ""
+            if bs.get("is_submitted"):
+                bs["is_submitted"] = False
+                s.slots_edited_after_submit = True
+            s.pending_intl_city = None
+            s.intl_city_options = ()
+            s.intl_unmatched_postal = ""
+            s.city_pincode_locked = False
+            s.city_confirm_needed = False
+            s.recommended_dentists = []
+            s.last_review_summary_slots = {}
+            s.last_review_summary_text = ""
+            code = ""
+
+        if not code:
+            if cand and (asked_country or getattr(s, "consultation_agreed", False)):
+                self._set_country(cand)
+                if cand == "IN":
+                    s.asking_for_field = "pincode"
+                    return False
+                bs["pincode"] = ""
+                bs["city"] = ""
+                bs["doctor_name"] = ""
+                s.city_confirm_needed = False
+                s.pincode_invalid = False
+                s.phone_invalid = False
+                s.recommended_dentists = []
+                if cu.has_postal_code(cand):
+                    s.asking_for_field, s.intl_reply_key = "intl_postal", "ask_postal"
+                else:
+                    s.asking_for_field, s.intl_reply_key = "intl_city", "ask_city"
+                return True
+            if asked_country:
+                s.country_unclear = True
+            return False
+
+        if code == "IN":
+            return False
+
+        # ---- International patient ----
+        af = getattr(s, "asking_for_field", None)
+        needs_cep = cu.missing_brazil_cep(bs)
+        if (not bs.get("city") or needs_cep) and cu.has_postal_code(code):
+            pc = cu.extract_postal(text, code)
+            if pc:
+                if pc == bs.get("pincode") and s.pending_intl_city:
+                    s.intl_reply_key = "confirm_city"
+                    return True
+                places = cu.lookup_postal_places(pc, code)
+                s.intl_city_options = places if len(places) > 1 else ()
+                if places:
+                    if needs_cep:
+                        bs["city"] = ""
+                    bs["pincode"] = pc
+                    s.pending_intl_city = places[0] if len(places) == 1 else None
+                    if s.pending_intl_city:
+                        s.asking_for_field, s.intl_reply_key = "intl_city_confirm", "confirm_city"
+                    else:
+                        s.asking_for_field, s.intl_reply_key = "intl_city", "choose_city"
+                else:
+                    bs["pincode"] = ""
+                    s.pending_intl_city = None
+                    s.intl_unmatched_postal = pc
+                    if code == "BR":
+                        s.asking_for_field, s.intl_reply_key = "intl_postal", "postal_invalid"
+                    else:
+                        s.asking_for_field, s.intl_reply_key = "intl_city", "postal_not_found"
+                return True
+            if s.intl_city_options:
+                answer = re.sub(r"(?i)^(?:i (?:live|stay) in|my city is|it's)\s+", "", text).strip(" .,!")
+                selected = next((place for place in s.intl_city_options
+                                 if cu.locality_key(place) == cu.locality_key(answer)), None)
+                if selected:
+                    bs["city"] = selected
+                    s.intl_city_options = ()
+                    s.asking_for_field, s.intl_reply_key = "phone", "ask_phone"
+                elif answer.casefold() in ("none", "neither", "none of these", "none of the above", "another city"):
+                    s.intl_city_options = ()
+                    bs["pincode"] = ""
+                    if code == "BR":
+                        s.asking_for_field, s.intl_reply_key = "intl_postal", "ask_postal"
+                    else:
+                        s.asking_for_field, s.intl_reply_key = "intl_city", "ask_city"
+                else:
+                    s.asking_for_field, s.intl_reply_key = "intl_city", "choose_city"
+                return True
+            if needs_cep:
+                s.asking_for_field = "intl_postal"
+                s.intl_reply_key = "postal_invalid" if digits else "ask_postal"
+                return True
+            if af in ("intl_postal", None):
+                if re.search(r"(don'?t know|not sure|no postal|no zip|nahi pata|khabar nathi|pata nahi)", text, re.IGNORECASE):
+                    s.asking_for_field, s.intl_reply_key = "intl_city", "ask_city"
+                    return True
+                s.asking_for_field = "intl_postal"
+                s.intl_reply_key = "postal_invalid" if digits else "ask_postal"
+                return True
+            if af == "intl_city" and digits:
+                s.asking_for_field, s.intl_reply_key = "intl_city", "ask_city"
+                return True
+
+        if not bs.get("city") and af == "intl_city_confirm" and getattr(s, "pending_intl_city", None):
+            low = text.lower().strip(" .!")
+            is_no = bool(re.search(r"\b(no|nope|not|wrong|galat|nahi|nathi|na)\b", low)) or any(w in text for w in ["नहीं", "ના", "નથી", "गलत", "ખોટું"])
+            is_yes = not is_no and (is_affirmative_submit(text) or bool(re.search(r"\b(yes|yeah|yep|right|correct|sure|ok|okay|haan|ha|ji|sahi|barabar|bilkul)\b", low))
+                                    or any(w in text for w in ["हाँ", "हां", "सही", "હા", "બરાબર", "होय"]))
+            if is_yes:
+                bs["city"] = s.pending_intl_city
+                s.pending_intl_city = None
+                s.asking_for_field, s.intl_reply_key = "phone", "ask_phone"
+            elif code == "BR" and (is_no or (self._looks_like_city(text) and low != s.pending_intl_city.casefold())):
+                s.pending_intl_city = None
+                bs["pincode"] = ""
+                s.asking_for_field, s.intl_reply_key = "intl_postal", "ask_postal"
+            elif is_no:
+                s.pending_intl_city = None
+                bs["pincode"] = ""
+                s.asking_for_field, s.intl_reply_key = "intl_city", "ask_city"
+            elif not digits and self._looks_like_city(text):
+                bs["city"] = text.strip(" .!").title()   # patient simply named their city instead
+                if bs["city"].casefold() != s.pending_intl_city.casefold():
+                    bs["pincode"] = ""
+                s.pending_intl_city = None
+                s.asking_for_field, s.intl_reply_key = "phone", "ask_phone"
+            else:
+                s.intl_reply_key = "confirm_city"
+            return True
+
+        if not bs.get("city"):
+            if (af == "intl_city" or not cu.has_postal_code(code)) and not digits:
+                c = re.sub(r"(?i)^(i\s+(live|stay)\s+in|i'?m\s+in|in|my city is|it'?s)\s+", "", text).strip(" .,!")
+                if self._looks_like_city(c):
+                    bs["city"] = c.title() if c.isascii() else c
+                    s.asking_for_field, s.intl_reply_key = "phone", "ask_phone"
+                else:
+                    s.asking_for_field, s.intl_reply_key = "intl_city", "ask_city"
+            return True
+
+        # Location done: phone number (also a later correction of it)
+        phone_edit = explicit_change and bool(re.search(r"\b(phone|mobile|number)\b", text, re.IGNORECASE))
+        if digits and (af == "phone" or phone_edit or not bs.get("phone")):
+            national = cu.normalize_phone(text, code)
+            if national:
+                e164 = cu.format_e164(national, code)
+                if bs.get("phone") != e164:
+                    bs["phone"] = e164
+                    bs["is_submitted"] = False
+                    s.slot_just_updated = True
+                s.last_invalid_phone_input = None
+                s.phone_invalid = False
+                s.asking_for_field = None
+                if s.user_name and (s.user_concern or bs.get("message")):
+                    s.intl_reply_key = "review"
+            else:
+                if phone_edit:
+                    bs["phone"] = ""
+                s.asking_for_field = "phone"
+                s.last_invalid_phone_input = digits
+                s.intl_reply_key = "phone_invalid"
+        return True
+
+    def update_session_memory(self, user_text="", history=None, data=None, *, voice_transcript_turn=None):
         """Ultra-robust session memory tracking for patient name, city, doctor, concern, and phone."""
         import re
 
@@ -1280,11 +1700,47 @@ class ConversationManager:
         # (asked city / pincode / phone) is blind and phone/city guards misfire
         if not history:
             history = self.session.get_history_turns()
+        from voice_agent.utils import country_utils as cu
+        _is_intl = cu.is_international
+        intl = _is_intl(self.session.booking_slots)
+        from_voice_transcript = voice_transcript_turn is not None
+        session = self.session
+        if from_voice_transcript and voice_transcript_turn != session.current_voice_turn_id:
+            return
+        if user_text and not session.booking_slots.get("is_submitted"):
+            if consultation_declined_in_text(
+                user_text, allow_short=session.consultation_offered and not session.consultation_agreed,
+            ):
+                session.decline_consultation()
+                return
+            if session.consultation_declined:
+                if from_voice_transcript or not consultation_requested_in_text(user_text):
+                    return
+                session.consultation_declined = False
+                session.consultation_agreed = True
+                session.asking_for_field = None if session.booking_slots.get("country_code") else "country"
+                if not session.booking_slots.get("country_code"):
+                    if not from_voice_transcript:
+                        session.intl_reply_key = "ask_country"
+                    return
+        if from_voice_transcript:
+            country = session.booking_slots.get("country_code")
+            if user_text:
+                session.has_user_spoken = True
+            if (intl or session.asking_for_field == "country"
+                    or (not country and session.consultation_agreed)
+                    or session.intl_location_handled_turn == voice_transcript_turn):
+                return
+            # Before country selection, captions can still help with the name and
+            # concern. Only the Live location tool can start the location flow.
+            intl = not country
 
-        # Detect and lock user language across all turns
+        # Live selects its reply language from audio. Only typed input uses text detection.
         if user_text:
             self.session.has_user_spoken = True
-            det_lang = detect_user_language(user_text, history, getattr(self.session, 'current_language', None))
+            det_lang = None if from_voice_transcript else detect_user_language(
+                user_text, history, self.session.current_language,
+            )
             if det_lang:
                 if det_lang != "en":
                     self.session.current_language = f"{det_lang}-IN"
@@ -1319,23 +1775,27 @@ class ConversationManager:
                 if _is_affirm_in_text(affirm_words, ut_lower):
                     self.session.consultation_agreed = True
                     self.session.profession_asked = True
-                    if not self.session.booking_slots.get("pincode"):
-                        self.session.asking_for_field = "pincode"
+                    if not self.session.booking_slots.get("pincode") and not _is_intl(self.session.booking_slots):
+                        self.session.asking_for_field = "country" if from_voice_transcript and intl else "pincode"
             elif _is_affirm_in_text(["appointment", "book", "अपॉइंटमेंट", "बुक", "બુક"], ut_lower):
                 self.session.consultation_agreed = True
                 self.session.profession_asked = True
-                if not self.session.booking_slots.get("pincode"):
-                    self.session.asking_for_field = "pincode"
+                if not self.session.booking_slots.get("pincode") and not _is_intl(self.session.booking_slots):
+                    self.session.asking_for_field = "country" if from_voice_transcript and intl else "pincode"
 
         if data:
             client_slots = data.get("slots")
-            if client_slots and isinstance(client_slots, dict):
+            if not isinstance(client_slots, dict):
+                client_slots = {}
+            if client_slots:
                 # ⚡ GUARD: Never blindly overwrite sensitive fields from frontend JS state.
                 # 'pincode', 'city', and 'doctor_name' are validated below via corpus checks.
                 # Allowing them through here causes stale JS-held values to resurrect after
                 # the bot explicitly cleared them (e.g. after a city edit).
                 # 'is_cancel' is server-owned: it is set only after a confirmed backend cancel.
-                _protected_slot_keys = {"pincode", "city", "doctor_name", "is_cancel"}
+                _protected_slot_keys = {"pincode", "city", "doctor_name", "is_cancel", "country", "country_code"}
+                if intl or _is_intl(client_slots):
+                    _protected_slot_keys.add("phone")
                 for k, v in client_slots.items():
                     if k in _protected_slot_keys:
                         continue  # handled by validated paths below
@@ -1364,25 +1824,25 @@ class ConversationManager:
             all_digits_corpus = "".join(filter(str.isdigit, all_user_corpus))
 
             client_city = data.get("userCity")
-            if client_city and isinstance(client_city, str) and client_city.strip() and not self.session.booking_slots.get("city"):
+            restore_legacy_location = not (intl or _is_intl(client_slots))
+            if restore_legacy_location and client_city and isinstance(client_city, str) and client_city.strip() and not self.session.booking_slots.get("city"):
                 # Only accept if mentioned in conversation corpus
                 if client_city.lower() in all_user_corpus.lower():
                     self.session.booking_slots["city"] = client_city.strip()
             client_doc = data.get("userDoctor")
-            if client_doc and isinstance(client_doc, str) and client_doc.strip() and not self.session.booking_slots.get("doctor_name"):
+            if restore_legacy_location and client_doc and isinstance(client_doc, str) and client_doc.strip() and not self.session.booking_slots.get("doctor_name"):
                 if client_doc.lower() in all_user_corpus.lower():
                     self.session.booking_slots["doctor_name"] = client_doc.strip()
             client_phone = data.get("userPhone")
-            if client_phone and isinstance(client_phone, str) and client_phone.strip() and not self.session.booking_slots.get("phone"):
+            if restore_legacy_location and client_phone and isinstance(client_phone, str) and client_phone.strip() and not self.session.booking_slots.get("phone"):
                 ph_d = "".join(filter(str.isdigit, client_phone))
                 if len(ph_d) == 10 and ph_d in all_digits_corpus:
                     self.session.booking_slots["phone"] = client_phone.strip()
             client_pincode = data.get("userPincode")
-            if client_pincode and isinstance(client_pincode, str) and client_pincode.strip() and not self.session.booking_slots.get("pincode"):
+            if restore_legacy_location and client_pincode and isinstance(client_pincode, str) and client_pincode.strip() and not self.session.booking_slots.get("pincode"):
                 pin_d = "".join(filter(str.isdigit, client_pincode))
                 if len(pin_d) == 6 and pin_d in all_digits_corpus:
                     self.session.booking_slots["pincode"] = client_pincode.strip()
-
         all_cities = CERTIFIED_CITIES + UNSUPPORTED_CITIES
 
         interjections = [
@@ -1711,10 +2171,14 @@ class ConversationManager:
                         "user_name": self.session.user_name, "user_concern": self.session.user_concern,
                         **{k: v for k, v in self.session.booking_slots.items() if k != "phone"}, **sum_slots_last
                     })
-                    if sum_slots_last.get("phone") and not is_valid_indian_mobile(sum_slots_last["phone"]):
+                    if intl:
+                        for field in ("phone", "pincode", "city", "doctor_name"):
+                            sum_slots_last.pop(field, None)
+                        summary_is_valid = False  # Only the server-validated review is used for international bookings.
+                    elif sum_slots_last.get("phone") and not is_valid_indian_mobile(sum_slots_last["phone"]):
                         sum_slots_last.pop("phone", None)
                     # A newer phone the patient gave after this summary must not be reverted to the summary's old one
-                    if any(extract_valid_phone(u_sub) for u_sub in subsequent_user_texts):
+                    if not intl and any(extract_valid_phone(u_sub) for u_sub in subsequent_user_texts):
                         sum_slots_last.pop("phone", None)
                         summary_is_valid = False
                     for k, v in sum_slots_last.items():
@@ -1750,7 +2214,7 @@ class ConversationManager:
 
                     # Check city in history (accepts all certified and regional residence cities)
                     c_found = extract_city_from_text(p)
-                    if c_found and not self.session.booking_slots.get("city") and not _city_edit_in_progress:
+                    if c_found and not intl and not self.session.booking_slots.get("city") and not _city_edit_in_progress:
                         from voice_agent.services.dentist_service import detect_indian_state
                         st_found = detect_indian_state(c_found)
                         if st_found and c_found.lower() == st_found.lower():
@@ -1761,17 +2225,20 @@ class ConversationManager:
                             self.session.unsupported_city = None
 
                     # Check phone in history
-                    valid_phone_h = extract_valid_phone(p)
+                    valid_phone_h = None if intl else extract_valid_phone(p)
                     if valid_phone_h and not self.session.booking_slots.get("phone"):
                         self.session.booking_slots["phone"] = valid_phone_h
 
                     # Check pincode in history
-                    valid_pin_h = extract_valid_pincode(p, phone=self.session.booking_slots.get("phone"))
+                    valid_pin_h = (
+                        extract_valid_pincode(p, phone=self.session.booking_slots.get("phone"))
+                        if self.session.booking_slots.get("country_code") == "IN" else None
+                    )
                     if valid_pin_h and not self.session.booking_slots.get("pincode") and not _city_edit_in_progress:
                         self.session.booking_slots["pincode"] = valid_pin_h
 
                     # Check doctor name in history
-                    doc_h = find_doctor_in_text(p, self.session.booking_slots.get("city"))
+                    doc_h = None if intl else find_doctor_in_text(p, self.session.booking_slots.get("city"))
                     if doc_h and not self.session.booking_slots.get("doctor_name") and not _city_edit_in_progress:
                         self.session.booking_slots["doctor_name"] = doc_h
 
@@ -1810,6 +2277,11 @@ class ConversationManager:
         if user_text:
             text = user_text.strip()
             self.session.slot_just_updated = False
+            # Step 3.0 (country) + international location / phone. Returns True when the booking is international.
+            if not from_voice_transcript:
+                intl = self._update_country_and_international(text, history)
+            if self.session.country_unclear:
+                return
             
             # Detect general update / change intent
             is_update_intent = any(w in text.lower() for w in [
@@ -1862,7 +2334,7 @@ class ConversationManager:
                                                  r"|ಹಲ್ಲ.*ಸಮಸ್ಯೆ|ನಗು.*ಸಮಸ್ಯೆ|പല്ല.*പ്രശ്ന|ਦੰਦ.*ਸਮੱਸਿਆ|दात.*समस्या)", last_model_turn_text))
 
             # Detect strict valid 10-digit Indian phone pattern
-            valid_phone = extract_valid_phone(text)
+            valid_phone = None if intl else extract_valid_phone(text)
             digits_in_text = "".join(filter(str.isdigit, text))
             if valid_phone:
                 if self.session.booking_slots.get("phone") != valid_phone:
@@ -1872,13 +2344,15 @@ class ConversationManager:
                 self.session.last_invalid_phone_input = None
                 self.session.phone_invalid = False
                 self.session.asking_for_field = None
-            elif is_update_intent and is_phone_edit_req:
+            elif is_update_intent and is_phone_edit_req and (not intl or not digits_in_text):
                 # User specifically asked to change phone number, but hasn't given the 10 digits yet
                 self.session.booking_slots["phone"] = ""
                 self.session.booking_slots["is_submitted"] = False
                 self.session.slot_just_updated = False
                 self.session.asking_for_field = "phone"
-            elif len(digits_in_text) >= 4 and not self.session.booking_slots.get("phone"):
+                if intl:
+                    self.session.intl_reply_key = "ask_phone"
+            elif len(digits_in_text) >= 4 and not intl and not self.session.booking_slots.get("phone"):
                 # Guard: Don't flag a 6-digit pincode as an invalid phone number
                 is_likely_pincode = (len(digits_in_text) == 6 and digits_in_text[0] in "123456789")
                 if not is_likely_pincode:
@@ -1886,7 +2360,9 @@ class ConversationManager:
                     if len(digits_in_text) in [7, 8, 9, 11, 12, 13] or last_model_asked_phone or getattr(self.session, 'asking_for_field', None) == "phone":
                         self.session.phone_invalid = True
 
-            if last_model_asked_city and not getattr(self.session, 'asking_for_field', None):
+            if intl:
+                pass  # international steps track their own asking_for_field
+            elif last_model_asked_city and not getattr(self.session, 'asking_for_field', None):
                 self.session.asking_for_field = "city"
             elif last_model_asked_pincode and not getattr(self.session, 'asking_for_field', None):
                 self.session.asking_for_field = "pincode"
@@ -1955,7 +2431,9 @@ class ConversationManager:
             c_user = extract_city_from_text(text, asking_for_city=asking_c)
 
             # Check if user mentioned an Indian State rather than a specific city
-            if detected_st and (not c_user or c_user.lower() == detected_st.lower()):
+            if intl:
+                pass  # international residence city is handled by _update_country_and_international
+            elif detected_st and (not c_user or c_user.lower() == detected_st.lower()):
                 self.session.user_state = detected_st
                 self.session.state_clarification_needed = detected_st
                 self.session.asking_for_field = "city"
@@ -2123,7 +2601,10 @@ class ConversationManager:
                         self.session.asking_for_field = "city"
 
             # ⚡ Step 2: Strict valid 6-digit area pincode detection + CITY LOCK VALIDATION ⚡
-            valid_pincode = extract_valid_pincode(text, phone=self.session.booking_slots.get("phone"))
+            valid_pincode = (
+                extract_valid_pincode(text, phone=self.session.booking_slots.get("phone"))
+                if self.session.booking_slots.get("country_code") == "IN" else None
+            )
             if valid_pincode and getattr(self.session, "pending_pincode", None) == valid_pincode and getattr(self.session, "asking_for_field", None) == "city_confirmation":
                 pass  # new pincode already awaiting the patient's city confirmation (handled above on "yes")
             elif valid_pincode and getattr(self.session, "city_pincode_locked", False) and valid_pincode != str(self.session.booking_slots.get("pincode") or valid_pincode):
@@ -2232,7 +2713,7 @@ class ConversationManager:
                     # Clear any invalid phone flag set by the same 6-digit input
                     if getattr(self.session, 'last_invalid_phone_input', None) == valid_pincode:
                         self.session.last_invalid_phone_input = None
-            elif is_update_intent and is_pincode_edit_req:
+            elif is_update_intent and is_pincode_edit_req and not intl:
                 self.session.booking_slots["pincode"] = ""
                 self.session.booking_slots["is_submitted"] = False
                 self.session.slot_just_updated = False
@@ -2243,7 +2724,9 @@ class ConversationManager:
                     self.session.last_invalid_pincode_input = pin_digits
 
             # Check if user requested other dentists (pagination) or asked for dentist names
-            if is_asking_for_other_dentists(text) and self.session.booking_slots.get("pincode"):
+            if intl:
+                pass  # no nearest-dentist lookup outside India: the international patient team guides them
+            elif is_asking_for_other_dentists(text) and self.session.booking_slots.get("pincode"):
                 self.session.asking_for_field = "doctor_selection"
                 self.session.is_other_dentists_requested = True
             elif is_asking_for_dentist_names(text) and not self.session.booking_slots.get("pincode"):
@@ -2454,31 +2937,12 @@ class ConversationManager:
                 self.session.slot_just_updated = False
                 self.session.asking_for_field = "concern"
             
-            # Check if user explicitly declined consultation
-            decline_words = [
-                "don't want to book", "dont want to book", "do not want to book", "no booking",
-                "no appointment", "not now", "no consultation", "nahi karni", "nahi karwani",
-                "nahi chahiye", "abhi nahi", "nahi book", "nathi karvi", "nathi joiye", "nathi karvavvu",
-                "just explain", "sirf batao", "khali samjav", "only explain", "not interested",
-                "vadhu nahi", "nahi karvani"
-            ]
-            t_clean = text.lower().strip()
-            if any(dw in t_clean for dw in decline_words) or (t_clean in ["no", "nahi", "nathi", "na", "no thanks"]):
-                # Declining the booking (not yet submitted) -> the next reply must ask the profession, if never asked
-                if (not getattr(self.session, "consultation_declined", False)
-                        and not getattr(self.session, "consultation_agreed", False)
-                        and not self.session.booking_slots.get("is_submitted")
-                        and not getattr(self.session, "profession_done", False)):
-                    self.session.profession_prompt_pending = True
-                self.session.consultation_declined = True
-                self.session.consultation_agreed = False
-
             # Check if user agreed to consultation or initiated booking
             booking_words = ["book", "appointment", "consultation", "अपॉइंटमेंट", "અપૉઇન્ટમેન્ટ", "મુલાકાત", "बुक", "करा दो", "कर दो", "બુક કરો", "બુકિંગ"]
             if any(w in text.lower() for w in booking_words):
                 self.session.consultation_agreed = True
                 self.session.profession_asked = True
-                if not self.session.booking_slots.get("pincode"):
+                if not self.session.booking_slots.get("pincode") and not _is_intl(self.session.booking_slots):
                     self.session.asking_for_field = "pincode"
             elif self.session.user_concern and not self.session.booking_slots.get("pincode"):
                 if is_affirmative_submit(text):
@@ -2501,7 +2965,7 @@ class ConversationManager:
                     if not (last_bot_text and any(nbq in last_bot_text for nbq in non_booking_questions)):
                         self.session.consultation_agreed = True
                         self.session.profession_asked = True
-                        if not self.session.booking_slots.get("pincode"):
+                        if not self.session.booking_slots.get("pincode") and not _is_intl(self.session.booking_slots):
                             self.session.asking_for_field = "pincode"
             if self.session.booking_slots.get("city") or self.session.booking_slots.get("pincode"):
                 self.session.consultation_agreed = True
@@ -2553,10 +3017,22 @@ class ConversationManager:
                         break
 
 
+    async def _update_typed_booking(self, text, history, data=None):
+        from voice_agent.utils import country_utils as cu
+
+        code = self.session.booking_slots.get("country_code")
+        if (code and self.session.asking_for_field != "country"
+                and getattr(self.session, "_intl_last_turn", None) != self.session.current_voice_turn_id):
+            postal = extract_valid_pincode(text) if code == "IN" else cu.extract_postal(text, code)
+            if postal:
+                await self.send_json({"type": "status_update", "status": "checking"})
+        await asyncio.to_thread(self.update_session_memory, text, history, data)
+
     async def stream_chat_text_response(self, user_text, history, system_prompt):
         """⚡ Blazing fast sub-second Gemini 3.5 Flash Lite streaming specifically for Chat Mode ⚡"""
         # Worker thread: slot parsing can make blocking postal/dentist API calls
-        await asyncio.to_thread(self.update_session_memory, user_text, history)
+        memory_text = "" if user_text.strip().startswith("SYSTEM INSTRUCTION") else user_text
+        await self._update_typed_booking(memory_text, history)
         
         raw_contents = []
         if history:
@@ -2842,6 +3318,50 @@ class ConversationManager:
             print(f"[PHONE-INVALID-SENT] Sent directly: {speech_text[:100]}")
             return
 
+        # ⚡ 0ab. Country (Step 3.0) / international steps: exact server text, sent directly
+        intl_key = getattr(self.session, 'intl_reply_key', None)
+        if intl_key or getattr(self.session, 'country_unclear', False):
+            from voice_agent.utils.country_utils import intl_text
+            self.session.intl_reply_key = None
+            self.session.country_unclear = False
+            slots = self.session.booking_slots
+            if intl_key == "review":
+                concern = self.session.user_concern or slots["message"]
+                speech_text = build_review_summary_text(
+                    user_lang, self.session.user_name, slots["phone"], slots["city"], slots.get("pincode") or "-",
+                    concern, "", is_update=bool(slots.get("submission_id")), country=slots["country"],
+                )
+                self.session.last_review_summary_slots = {**slots, "message": concern}
+                self.session.last_review_summary_text = speech_text
+            else:
+                speech_text = intl_text(intl_key or "country_unclear", user_lang, slots.get("country_code") or None,
+                                        postal=slots.get("pincode") or self.session.intl_unmatched_postal,
+                                        city=self.session.intl_city_label or slots.get("city") or "")
+            if not intl_key:
+                self.session.asking_for_field = "country"
+            _turn = self.session.current_voice_turn_id
+            _tag = detect_best_tag(user_text, speech_text)
+            await self.send_json({"type": "sync_slots", "slots": self.session.booking_slots})
+            await self.send_json({"type": "bot_text_chunk", "text": speech_text, "tag": _tag, "turnId": _turn})
+            await self.send_json({"type": "bot_spoken_text", "text": speech_text, "tag": _tag, "turnId": _turn})
+            await self.send_json({
+                "type": "reply_complete",
+                "userText": user_text,
+                "botText": speech_text,
+                "tag": _tag,
+                "totalChunks": 1,
+                "slots": dict(self.session.booking_slots),
+                "userName": self.session.user_name,
+                "userConcern": self.session.user_concern,
+                "userCity": self.session.booking_slots.get("city"),
+                "userDoctor": self.session.booking_slots.get("doctor_name"),
+                "userPhone": self.session.booking_slots.get("phone"),
+                "userPincode": self.session.booking_slots.get("pincode")
+            })
+            self.session.add_transcript_turn("model", speech_text)
+            print(f"[INTL-SENT:{intl_key or 'country_unclear'}] {speech_text[:100]}")
+            return
+
         # ⚡ 0b. City confirmation from Pincode check: Prompt user to confirm city based on pincode
         if getattr(self.session, 'city_confirm_needed', False):
             from voice_agent.services.dentist_service import format_city_confirm_speech
@@ -2954,7 +3474,10 @@ class ConversationManager:
         self.session.is_other_dentists_requested = False
         active_pin = pin or (extract_valid_pincode(user_text, phone=self.session.booking_slots.get("phone")) if not getattr(self.session, 'city_confirm_needed', False) and not getattr(self.session, 'pincode_invalid', False) else "")
         is_sub_cmd = is_explicit_submit_command(user_text)
+        from voice_agent.utils.country_utils import is_international as _is_intl_chat
         is_dentist_needed = (
+            self.session.booking_slots.get("country_code") == "IN" and
+            not self.session.consultation_declined and
             not getattr(self.session, 'city_pincode_mismatch', False) and
             not getattr(self.session, 'city_confirm_needed', False) and
             not getattr(self.session, 'pincode_invalid', False) and
@@ -3034,7 +3557,9 @@ class ConversationManager:
 
         is_direct_doc_inquiry = getattr(self.session, 'pincode_asked_for_dentist', False) or is_asking_for_dentist_names(user_text)
 
-        if slots.get("is_submitted") and not asking_field:
+        if self.session.consultation_declined and not slots.get("is_submitted"):
+            next_step_instruction = "The patient declined booking. Continue helping with their dental questions until they explicitly ask to book again."
+        elif slots.get("is_submitted") and not asking_field:
             next_step_instruction = (
                 f"🚨 MANDATORY POST-SUBMISSION PERMANENT LOCK (CRITICAL OVERRIDE):\n"
                 f"The consultation appointment for {display_name} (Phone: {ph}, City: {ct}, Doctor: {dr}, Concern: {cn}) has ALREADY BEEN SUCCESSFULLY SUBMITTED to our clinic team!\n"
@@ -3056,6 +3581,10 @@ class ConversationManager:
             )
         elif asking_field == "name":
             next_step_instruction = f"STEP 1 (NAME UPDATE): The patient wants to update their name. Do NOT present the review summary yet. Ask for their correct full name in {user_lang}: 'Sure! What is your correct full name?' ('ચોક્કસ! તમારું સાચું પૂરું નામ શું છે?')."
+        elif not slots.get("country_code") and (self.session.consultation_agreed or is_direct_doc_inquiry):
+            from voice_agent.utils.country_utils import intl_text
+            self.session.asking_for_field = "country"
+            next_step_instruction = f"Ask only this country question: '{intl_text('ask_country', user_lang)}'."
         elif is_direct_doc_inquiry and not getattr(self.session, 'consultation_agreed', False):
             if not pin:
                 next_step_instruction = (
@@ -3112,6 +3641,33 @@ class ConversationManager:
                     f"• Hindi: 'मैं समझ सकती हूँ कि आपको {cn} की समस्या आ रही है, {display_name}। क्या मैं इसके समाधान के लिए हमारे USD Authorised Smile Designer के साथ अपॉइंटमेंट बुक करने में आपकी मदद करूँ?'\n"
                     f"• English: 'I understand you are experiencing {cn}, {display_name}. Would you like me to help book a consultation appointment with our USD Authorised Smile Designer for this?'"
                 )
+        elif not slots.get("country_code") and not pin and not ct and not getattr(self.session, 'city_confirm_needed', False):
+            # STEP 3.0: never assume India from the language/accent - ask the country first
+            from voice_agent.utils.country_utils import intl_text
+            self.session.asking_for_field = "country"
+            next_step_instruction = (
+                f"STEP 3.0 (COUNTRY OF RESIDENCE - FIRST BOOKING QUESTION):\n"
+                f"The patient agreed to a consultation. Before any pincode, ask ONLY which country they currently live in, in {user_lang}:\n"
+                f"'{intl_text('ask_country', user_lang)}'\n"
+                f"🚨 Never assume India from their language or accent. Do NOT ask for pincode, city, doctor or phone in this turn."
+            )
+        elif _is_intl_chat(slots) and (not ct or asking_field in ("intl_postal", "intl_city", "intl_city_confirm")):
+            from voice_agent.utils.country_utils import intl_text, has_postal_code
+            cc = slots.get("country_code")
+            key = "ask_postal" if (has_postal_code(cc) and not pin and asking_field != "intl_city") else "ask_city"
+            p_city = getattr(self.session, "pending_intl_city", None) or ""
+            if asking_field == "intl_city_confirm" and p_city:
+                key = "confirm_city"
+            next_step_instruction = (
+                f"INTERNATIONAL BOOKING ({slots.get('country')}): ask ONLY this in {user_lang}: '{intl_text(key, user_lang, cc, postal=pin or '', city=p_city)}'\n"
+                f"🚨 Do NOT ask for an Indian 6-digit pincode and do NOT name any dentist."
+            )
+        elif _is_intl_chat(slots) and (not ph or asking_field == "phone"):
+            from voice_agent.utils.country_utils import intl_text
+            next_step_instruction = (
+                f"INTERNATIONAL BOOKING - CONCIERGE + MOBILE NUMBER: say this in {user_lang}: '{intl_text('ask_phone', user_lang, slots.get('country_code'))}'\n"
+                f"🚨 Do NOT name any dentist (no nearest-dentist search outside India). Do NOT show the review summary yet."
+            )
         elif getattr(self.session, 'city_confirm_needed', False) or asking_field == "city_confirmation":
             self.session.asking_for_field = "city_confirmation"
             p_pin = getattr(self.session, 'pending_pincode', '') or pin or ''
@@ -3250,7 +3806,7 @@ class ConversationManager:
                 is_update = getattr(self.session, 'slot_just_updated', False)
                 self.session.slot_just_updated = False
                 self.session.asking_for_field = None
-                next_step_instruction = get_review_summary_prompt(user_lang, display_name, ph, ct, pin or (confirmed_review_slots.get("pincode") or "-"), cn, dr, is_update=is_update)
+                next_step_instruction = get_review_summary_prompt(user_lang, display_name, ph, ct, pin or (confirmed_review_slots.get("pincode") or "-"), cn, dr, is_update=is_update, country=slots.get("country") if _is_intl_chat(slots) else None)
 
         active_memory += f"\n- STEP-BY-STEP ONE-QUESTION-AT-A-TIME DIRECTIVE:\n{next_step_instruction}\n(CRITICAL: Never re-ask details already confirmed. Ask ONLY the single missing step)."
 
@@ -3310,9 +3866,10 @@ class ConversationManager:
 
         # ⚡ Instant Fast-Path Submission / Cancellation when User Confirms Review Summary ⚡
         user_txt_l = user_text.lower().strip()
-        is_affirmative = is_affirmative_submit(user_text)
-        is_explicit_submit = is_explicit_submit_command(user_text)
-        is_cancel = is_cancel_submit(user_text, self.session)
+        booking_paused = self.session.consultation_declined and not slots.get("is_submitted")
+        is_affirmative = not booking_paused and is_affirmative_submit(user_text)
+        is_explicit_submit = not booking_paused and is_explicit_submit_command(user_text)
+        is_cancel = not booking_paused and is_cancel_submit(user_text, self.session)
 
         # ⚡ CRITICAL: When user says "submit" or confirms, ALWAYS extract all details directly from the last confirmation message ⚡
         confirmed_review_slots = dict(getattr(self.session, "last_review_summary_slots", {}) or {})
@@ -3383,6 +3940,15 @@ class ConversationManager:
         has_rev_pin = bool(confirmed_review_slots.get("pincode") and len("".join(filter(str.isdigit, str(confirmed_review_slots["pincode"])))) == 6)
         has_rev_doc = bool(confirmed_review_slots.get("doctor_name"))
         has_rev_msg = bool(confirmed_review_slots.get("message") or confirmed_review_slots.get("user_concern"))
+        if _is_intl_chat(slots):
+            # International: postal code is optional (some countries have none), phone follows the country rule
+            from voice_agent.utils.country_utils import normalize_phone as _np_chat, missing_brazil_cep
+            _cc = slots.get("country_code")
+            has_pincode = not missing_brazil_cep(slots)
+            has_phone = bool(_np_chat(slots.get("phone"), _cc))
+            all_slots_complete = has_fn and has_city and has_concern and has_phone and has_pincode
+            has_rev_pin = has_pincode
+            has_rev_ph = bool(_np_chat(confirmed_review_slots.get("phone") or slots.get("phone"), _cc))
         is_full_review_ready = has_rev_fn and has_rev_ph and has_rev_city and has_rev_pin and has_rev_msg
 
         # If user explicitly requests submit or confirms submit after review summary, but ANY mandatory field is missing -> ask for missing field!
@@ -3394,6 +3960,10 @@ class ConversationManager:
             elif not has_concern:
                 missing_msg = get_missing_field_message(user_lang, "concern")
                 self.session.asking_for_field = "concern"
+            elif not has_pincode and slots.get("country_code") == "BR":
+                from voice_agent.utils.country_utils import intl_text
+                missing_msg = intl_text("ask_postal", user_lang, "BR")
+                self.session.asking_for_field = "intl_postal"
             elif not has_pincode:
                 missing_msg = get_missing_field_message(user_lang, "pincode")
                 self.session.asking_for_field = "pincode"
@@ -3541,6 +4111,10 @@ class ConversationManager:
                 s_city = bool(submit_args.get("city") and len(str(submit_args["city"]).strip()) >= 2 and str(submit_args["city"]).lower() not in ["", "none", "null", "india"])
                 s_pin = bool(submit_args.get("pincode") and len("".join(filter(str.isdigit, str(submit_args["pincode"])))) == 6)
                 s_phone = bool(submit_args.get("phone") and len("".join(filter(str.isdigit, str(submit_args["phone"])))) == 10)
+                if _is_intl_chat(submit_args):
+                    from voice_agent.utils.country_utils import normalize_phone as _np_sub
+                    s_pin = True
+                    s_phone = bool(_np_sub(submit_args.get("phone"), submit_args.get("country_code")))
                 
                 if not (s_fn and s_concern and s_city and s_pin and s_phone):
                     missing_f = "phone"
@@ -3787,7 +4361,7 @@ class ConversationManager:
                                             parts = candidates[0]["content"].get("parts", [])
                                             for p in parts:
                                                 func_call = p.get("functionCall")
-                                                if func_call and func_call.get("name") == "submit_appointment_booking":
+                                                if not booking_paused and func_call and func_call.get("name") == "submit_appointment_booking":
                                                     call_args = func_call.get("args") or {}
                                                     gemini_is_cancel = bool(call_args.get("is_cancel"))
                                                     effective_is_cancel = is_cancel or gemini_is_cancel
@@ -4003,7 +4577,7 @@ class ConversationManager:
             self.session.profession_prompt_pending = False
 
         # ⚡ CRITICAL: Extract and synchronize slots directly from Riya's review/confirmation message ⚡
-        if is_submit_review_summary(clean_text or full_text):
+        if is_submit_review_summary(clean_text or full_text) and not _is_intl_chat(self.session.booking_slots):
             summary_slots = extract_slots_from_review_summary(clean_text or full_text)
             if summary_slots:
                 # Guard against model hallucinating a doctor in the review summary when user never picked one
@@ -4098,6 +4672,10 @@ class ConversationManager:
             h_p = bool(s_slots.get("pincode") and len("".join(filter(str.isdigit, str(s_slots["pincode"])))) == 6)
             h_m = bool(s_slots.get("message") and len(s_slots["message"].strip()) >= 2 and s_slots["message"].lower() not in ["none", "null", "dental consultation appointment request", ""])
             h_ph = bool(s_slots.get("phone") and len("".join(filter(str.isdigit, str(s_slots["phone"])))) == 10)
+            if _is_intl_chat(s_slots):
+                from voice_agent.utils.country_utils import normalize_phone as _np_int
+                h_p = True
+                h_ph = bool(_np_int(s_slots.get("phone"), s_slots.get("country_code")))
 
             missing_f = "phone"
             if not h_f: missing_f = "name"
@@ -4155,11 +4733,18 @@ class ConversationManager:
             return
         
         self.session.reset_activity_timer()
+        text = str(data.get("text") or "")
+        if msg_type == "resume_booking" or (
+            msg_type == "text_input" and text.startswith("SYSTEM INSTRUCTION: The user") and " has reconnected." in text
+        ):
+            await self.resume_booking(data)
+            return
         
         if msg_type == 'start_of_speech':
             self.session.vad_state.is_speaking = True
             await self.send_json({"type": "user_speaking_status", "is_speaking": True})
             self.session.current_voice_turn_id += 1
+            self.session.latest_typed_user_text = ""
             self.session.current_user_pcm_chunks = []
             self.session.last_sent_voice_transcript_turn_id = -1
             self.session.is_interrupted = False
@@ -4174,6 +4759,8 @@ class ConversationManager:
 
         if msg_type == 'text_input':
             self.session.current_voice_turn_id += 1
+            self.session.current_user_transcription = ""
+            self.session.user_transcription_task = None
             self.session.latest_typed_user_text = data.get("text", "")
             self.session.latest_client_history = data.get("history", [])
             self.session.latest_client_is_voice_mode = data.get("isVoiceMode") != False
@@ -4196,7 +4783,7 @@ class ConversationManager:
             if is_system_instruction:
                 await asyncio.to_thread(self.update_session_memory, "", self.session.latest_client_history, data)
             else:
-                await asyncio.to_thread(self.update_session_memory, self.session.latest_typed_user_text, self.session.latest_client_history, data)
+                await self._update_typed_booking(self.session.latest_typed_user_text, self.session.latest_client_history, data)
 
             user_text = self.session.latest_typed_user_text or "Hello"
             self.session.is_interrupted = False
@@ -4207,13 +4794,18 @@ class ConversationManager:
             self.session.assistant_audio_buffer = bytearray()
             
             # If city-pincode mismatch or dentist recommendation is needed, handle directly via stream_chat_text_response
+            from voice_agent.utils import country_utils as cu
+            intl = cu.is_international(self.session.booking_slots)
             is_pin_turn = bool(getattr(self.session, 'pincode_just_updated', False) or (extract_valid_pincode(user_text, phone=self.session.booking_slots.get("phone")) and not getattr(self.session, 'recommended_dentists_spoken', False)))
             is_oth = is_asking_for_other_dentists(user_text) or getattr(self.session, 'is_other_dentists_requested', False)
             has_pin = self.session.booking_slots.get("pincode") or extract_valid_pincode(user_text, phone=self.session.booking_slots.get("phone"))
-            needs_dentist_speech = (is_pin_turn or (is_oth and bool(has_pin)) or (is_asking_for_dentist_names(user_text) and bool(has_pin))) and not getattr(self.session, 'city_pincode_mismatch', False)
+            needs_dentist_speech = self.session.booking_slots.get("country_code") == "IN" and (is_pin_turn or (is_oth and bool(has_pin)) or (is_asking_for_dentist_names(user_text) and bool(has_pin))) and not getattr(self.session, 'city_pincode_mismatch', False)
 
             if is_system_instruction and self.session.latest_client_is_voice_mode:
                 self.session.clear_voice_intercept_flags()
+            elif self.session.intl_reply_key or self.session.country_unclear:
+                asyncio.create_task(self.stream_chat_text_response(user_text, self.session.latest_client_history, system_prompt))
+                return
             elif getattr(self.session, 'phone_invalid', False) or getattr(self.session, 'state_clarification_needed', None) or getattr(self.session, 'city_pincode_mismatch', False) or getattr(self.session, 'pincode_invalid', False) or getattr(self.session, 'city_confirm_needed', False) or getattr(self.session, 'is_travel_booking_turn', False) or needs_dentist_speech or getattr(self.session, 'city_updated_need_pincode', False):
                 asyncio.create_task(self.stream_chat_text_response(user_text, self.session.latest_client_history, system_prompt))
                 return
@@ -4232,18 +4824,28 @@ class ConversationManager:
             if self.session.gemini_ws:
                 try:
                     active_mem_lines = []
-                    if getattr(self.session, 'has_user_spoken', False) and getattr(self.session, 'is_language_established', False) and getattr(self.session, 'current_language', None):
-                        active_mem_lines.append(f"- MANDATORY LANGUAGE: The user's active language is {self.session.current_language}. You MUST respond in {self.session.current_language} beginning with [{self.session.current_language}]. However, if the user switches to another Indian language (e.g. Hindi, Gujarati, Marathi, English), immediately switch with them to that language!")
-                    else:
-                        active_mem_lines.append("- STARTING LANGUAGE & DYNAMIC MATCHING: Start with greeting in Indian English beginning with [en-IN]. However, as soon as the user speaks in Hindi [hi-IN], Gujarati [gu-IN], Marathi [mr-IN], or any of the 11 supported Indian languages, YOU MUST IMMEDIATELY SWITCH YOUR RESPONSE to that same language and prefix with the appropriate language tag!")
+                    active_mem_lines.append(f"Active reply language: {self.session.current_language or 'en-IN'}. {VOICE_LANGUAGE_RULE}")
 
                     # Sequential step-by-step flow enforcement (STRICT ONE QUESTION AT A TIME)
-                    if not self.session.user_name:
+                    if self.session.consultation_declined and not self.session.booking_slots.get("is_submitted"):
+                        active_mem_lines.append("- The patient declined booking. Continue with dental questions until they explicitly ask to book again.")
+                    elif not self.session.user_name:
                         active_mem_lines.append("- CURRENT SEQUENTIAL STEP (MANDATORY): Step 1 (Greeting & Patient Name). Ask warmly for their name. DO NOT ask for City, Concern, Doctor, Pincode, or Phone yet!")
                     elif not self.session.user_concern:
                         active_mem_lines.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 1 done -> Step 2 (Dental Concern). Greet {self.session.user_name} by name and ask ONLY what specific dental concern or smile goal they have (do NOT ask them to confirm their name). YOU ARE STRICTLY FORBIDDEN from asking for City, Doctor, Pincode, or Phone!")
                     elif not getattr(self.session, "consultation_agreed", False) and not self.session.booking_slots.get("pincode"):
                         active_mem_lines.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 2 confirmed -> Step 2.5 (Consultation Permission Gate). Acknowledge dental concern ({self.session.user_concern}), and ask ONLY: 'Would you like me to help book a consultation appointment with our USD Authorised Smile Designer for this?'. YOU MUST WAIT FOR PATIENT TO SAY YES before asking for Pincode! DO NOT ask about profession or pincode in this turn!")
+                    elif not self.session.booking_slots.get("country_code") and not self.session.booking_slots.get("pincode"):
+                        self.session.asking_for_field = "country"
+                        active_mem_lines.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Ask ONLY: '{cu.intl_text('ask_country', self.session.current_language)}' and pass the answer to set_patient_location.")
+                    elif intl:
+                        code = self.session.booking_slots.get("country_code")
+                        if not self.session.booking_slots.get("city") or not self.session.booking_slots.get("phone"):
+                            key = self.gemini_client.international_location_prompt()
+                            prompt = cu.intl_text(key, self.session.current_language, code, postal=self.session.booking_slots.get("pincode") or "", city=self.session.intl_city_label)
+                            active_mem_lines.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Ask ONLY: '{prompt}' and pass the answer to the relevant booking tool.")
+                        elif not self.session.booking_slots.get("is_submitted"):
+                            active_mem_lines.append("- Call prepare_review_summary for the international booking review.")
                     elif not self.session.booking_slots.get("pincode"):
                         active_mem_lines.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 3 (Pincode FIRST). Ask ONLY for their 6-digit area pincode ('What is your 6-digit area pincode?'). YOU ARE STRICTLY FORBIDDEN from asking for city, doctor, or phone in this turn! DO NOT ask about profession!")
                     elif getattr(self.session, "city_confirm_needed", False) or not self.session.booking_slots.get("city"):
@@ -4338,7 +4940,10 @@ class ConversationManager:
             # Background transcription for the browser UI chat bubble subtitles only
             if native_text:
                 self.session.current_user_transcription = native_text
-                self.update_session_memory(native_text, self.session.latest_client_history)
+                await asyncio.to_thread(
+                    self.update_session_memory, native_text, self.session.latest_client_history,
+                    voice_transcript_turn=turn_id_for_this_speech,
+                )
                 fut = asyncio.Future()
                 fut.set_result(native_text)
                 self.session.user_transcription_task = fut
@@ -4348,28 +4953,18 @@ class ConversationManager:
                     self.transcribe_user_audio_async(pcm_buffer, turn_id_for_this_speech)
                 )
         
-        elif msg_type == 'start_of_speech':
-            self.session.vad_state.is_speaking = True
-            self.session.current_voice_turn_id += 1
-            self.session.current_user_pcm_chunks = []
-            self.session.last_sent_voice_transcript_turn_id = -1
-            self.session.is_interrupted = False
-            self.session.chunk_index = 0
-            self.session.display_str = ""
-            self.session.full_bot_reply = ""
-            self.session.live_pcm_buffer = bytearray()
-            self.session.assistant_audio_buffer = bytearray()
-            self.session.current_user_transcription = ""
-            self.session.user_transcription_task = None
-
     async def transcribe_user_audio_async(self, pcm_bytes, turn_id):
         try:
             lang = self.session.current_language or 'hi-IN'
             raw_text = await transcribe_voice_data(pcm_bytes, 16000, lang)
             text = clean_hallucinations(raw_text).strip()
+            if turn_id != self.session.current_voice_turn_id:
+                return text
             self.session.current_user_transcription = text
             if text:
-                self.update_session_memory(text, self.session.latest_client_history)
+                await asyncio.to_thread(
+                    self.update_session_memory, text, self.session.latest_client_history, voice_transcript_turn=turn_id,
+                )
             await self.maybe_send_voice_transcript(turn_id, text)
             return text
         except Exception as e:
@@ -4405,9 +5000,6 @@ class ConversationManager:
             if not user_text:
                 user_text = self.session.current_user_transcription or "Voice Message"
                 
-            if user_text and user_text != "Voice Message":
-                self.update_session_memory(user_text, self.session.latest_client_history)
-
             lang = self.session.current_language or 'en-IN'
             bot_text = await transcribe_voice_data(audio_bytes, 24000, language_code=lang)
             if not bot_text:
@@ -4415,9 +5007,9 @@ class ConversationManager:
             clean_text = clean_assistant_text(bot_text)
             best_tag = detect_best_tag(user_text, clean_text)
             
-            # Synchronize any review summary slots spoken by the bot in Voice Mode
+            # Synchronize legacy Indian reviews. International reviews come from the booking tools.
             summary_slots = extract_slots_from_review_summary(clean_text or bot_text)
-            if summary_slots:
+            if summary_slots and self.session.booking_slots.get("country_code") == "IN":
                 for k, v in summary_slots.items():
                     if v and str(v).lower() not in ["none", "null", "-", "--"]:
                         self.session.booking_slots[k] = v

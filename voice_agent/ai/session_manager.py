@@ -1,5 +1,6 @@
 import time
 import asyncio
+from threading import RLock
 from voice_agent.utils.constants import DEFAULT_LANGUAGE
 from voice_agent.audio.vad import SileroVADState
 
@@ -66,6 +67,15 @@ class Session:
         self.user_state = None
         self.state_clarification_needed = None
         self.submitted_lead_id = None
+        # International booking (country_code != 'IN'): one-shot flags the chat pipeline turns into direct replies
+        self.intl_reply_key = None        # e.g. 'ask_postal', 'ask_city', 'ask_phone', 'postal_invalid', 'phone_invalid'
+        self.intl_location_lock = RLock()
+        self.intl_location_handled_turn = None
+        self.pending_intl_city = None
+        self.intl_city_options = ()
+        self.intl_unmatched_postal = ""
+        self.country_unclear = False
+        self.voice_country_question_turn = None
         self.slots_edited_after_submit = False
         self.booking_slots = {
             "first_name": "",
@@ -74,6 +84,8 @@ class Session:
             "phone": "",
             "city": "",
             "pincode": "",
+            "country": "",        # '' until the patient answers the country question (Step 3.0)
+            "country_code": "",   # ISO code: 'IN' keeps the Indian pincode/dentist flow, anything else = international
             "message": "",
             "doctor_name": "",
             "is_booking_active": False,
@@ -113,6 +125,8 @@ class Session:
         self.state_clarification_needed = None
         self.pincode_just_updated = False
         self.is_other_dentists_requested = False
+        self.intl_reply_key = None
+        self.country_unclear = False
 
     def get_history_turns(self, max_turns=20):
         """Server-side transcript in client-history format. Voice turns never carry client history, so slot parsing falls back to this."""
@@ -120,6 +134,36 @@ class Session:
             {"role": role, "parts": [{"text": text}]}
             for role, text in self.transcript_history[-max_turns:]
         ]
+
+    def decline_consultation(self):
+        if not self.consultation_declined and not self.profession_done:
+            self.profession_prompt_pending = True
+        self.consultation_declined = True
+        self.consultation_offered = False
+        self.consultation_agreed = False
+        self.asking_for_field = None
+        self.voice_country_question_turn = None
+        self.pending_cancellation = False
+        self.last_review_summary_slots = {}
+        self.last_review_summary_text = ""
+        self.clear_voice_intercept_flags()
+
+    @property
+    def intl_city_label(self):
+        return self.pending_intl_city or ", ".join(self.intl_city_options[:4])
+
+    def booking_resume_context(self):
+        return {
+            "field": self.asking_for_field,
+            "language": self.current_language,
+            "consultation_agreed": self.consultation_agreed,
+            "consultation_declined": self.consultation_declined,
+            "doctor_guidance_asked": self.doctor_guidance_asked,
+            "pending_pincode": getattr(self, "pending_pincode", None),
+            "pending_city": getattr(self, "pending_city", None),
+            "pending_display_city": getattr(self, "pending_display_city", None),
+            "pending_intl_city": self.pending_intl_city,
+        }
 
     def get_full_transcript(self):
         res = ""

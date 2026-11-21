@@ -177,6 +177,21 @@ def get_review_summary_problem(slots: dict):
     phone_digits = "".join(filter(str.isdigit, str(slots.get("phone") or "")))
     if not phone_digits:
         return "phone_missing"
+    from voice_agent.utils.country_utils import is_international, normalize_phone, has_postal_code
+    if is_international(slots):
+        # International booking: country phone rule, postal code only where the country has one, city required
+        code = slots.get("country_code")
+        if not normalize_phone(slots.get("phone"), code):
+            return "phone_invalid"
+        name = str(slots.get("user_name") or slots.get("first_name") or "").strip()
+        if len(name) < 2 or name.lower() in ["none", "null", "patient", "user", "-"]:
+            return "name"
+        if len(str(slots.get("city") or "").strip()) < 2:
+            return "city"
+        concern = str(slots.get("user_concern") or slots.get("message") or "").strip()
+        if len(concern) < 2 or concern.lower() in ["none", "null", "-"]:
+            return "concern"
+        return None
     if not is_valid_indian_mobile(phone_digits):
         return "phone_invalid"
     name = str(slots.get("user_name") or slots.get("first_name") or "").strip()
@@ -304,6 +319,10 @@ def extract_slots_from_review_summary(text: str) -> dict:
         # A. PHONE (Digits or Phone key)
         if re.search(r"\b[0-9]{10}\b", raw_v) or any(w in k_clean or w in k_trans for w in ["phone", "phon", "phona", "fone", "fon", "mobile", "mobail", "duravani", "tolaipesi", "sampark"]):
             digits = "".join(filter(str.isdigit, raw_v))
+            if raw_v.strip().startswith("+") and len(digits) >= 8:
+                # International number in the summary ('+971501234567') is kept whole with its dial code
+                extracted["phone"] = "+" + digits
+                continue
             if len(digits) >= 10:
                 # Exactly 10 digits (optionally behind 0 / 91); anything else is kept as-is so validation rejects it
                 extracted["phone"] = normalize_mobile(digits) or digits
@@ -629,6 +648,39 @@ def is_cancel_submit(text: str, session=None) -> bool:
                     return True
 
     return False
+
+
+def consultation_declined_in_text(text, *, allow_short=False):
+    """Recognize a refusal to start booking independently of cancellation."""
+    reply = (text or "").casefold().replace("’", "'").strip(" .!?।")
+    if allow_short and reply in {
+        "no", "no thanks", "no thank you", "not now", "not interested", "nahi", "nathi", "na",
+        "just explain", "only explain",
+        "नहीं", "ना", "मत करो", "ના", "નથી", "રહેવા દો",
+    }:
+        return True
+    return bool(re.search(
+        r"\b(?:don't|dont|do not)\s+(?:(?:want|need)\s+to\s+)?(?:book|schedule)\b"
+        r"|\b(?:don't|dont|do not)\s+(?:want|need)\s+(?:an?\s+)?(?:appointment|consultation)\b"
+        r"|\bnot\s+(?:booking|scheduling|going to book)\b"
+        r"|\b(?:no|stop)\s+(?:appointment|booking|consultation)\b"
+        r"|\b(?:nahi|nathi)\s+(?:book|karni|karwani|karvavvu|karvi)\b"
+        r"|(?:अपॉइंटमेंट|अपोइंटमेंट|बुक|कंसल्टेशन).{0,25}(?:नहीं|मत)"
+        r"|(?:नहीं|मत).{0,12}(?:बुक|अपॉइंटमेंट|अपोइंटमेंट)"
+        r"|(?:અપૉઇન્ટમેન્ટ|અપોઇન્ટમેન્ટ|બુક|કન્સલ્ટેશન).{0,25}(?:નથી|નહીં|ન કર)"
+        r"|(?:નથી|નહીં|ન કર).{0,12}(?:બુક|અપૉઇન્ટમેન્ટ|અપોઇન્ટમેન્ટ)",
+        reply,
+    ))
+
+
+def consultation_requested_in_text(text):
+    return bool(re.search(
+        r"\b(?:please (?:book|schedule)|(?:want|would like) to (?:book|schedule)|can you (?:book|schedule))\b"
+        r"|^\s*book (?:me |my |an? )?(?:appointment|consultation)\b"
+        r"|(?:अपॉइंटमेंट|अपोइंटमेंट|कंसल्टेशन).{0,18}(?:बुक (?:कर|कीजिए)|लेनी है|करानी है)"
+        r"|(?:અપૉઇન્ટમેન્ટ|અપોઇન્ટમેન્ટ|કન્સલ્ટેશન).{0,18}(?:બુક કર|લેવી છે|કરાવવી છે)",
+        (text or "").casefold(),
+    ))
 
 
 def is_explicit_submit_command(text: str) -> bool:

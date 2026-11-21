@@ -3,6 +3,7 @@ import re
 import json
 import base64
 import asyncio
+from uuid import uuid4
 import httpx
 import websockets
 from websockets.exceptions import ConnectionClosed
@@ -17,6 +18,24 @@ from voice_agent.services.appointment_service import submit_consultation_appoint
 from voice_agent.utils.helpers import is_cancel_submit, is_explicit_submit_command, is_affirmative_submit, is_cancel_response_text, is_submit_response_text
 from voice_agent.utils.helpers import is_submit_review_summary, is_valid_indian_mobile, get_review_summary_problem
 from voice_agent.utils.helpers import normalize_mobile, phone_from_user_turns
+from voice_agent.utils.helpers import consultation_declined_in_text, consultation_requested_in_text
+
+
+from voice_agent.utils import country_utils as cu
+
+
+def booking_phone_ok(phone, slots):
+    """Mobile number valid for the booking's country (India: 10 digits starting 6-9)."""
+    if cu.is_international(slots or {}):
+        return bool(cu.normalize_phone(phone, (slots or {}).get("country_code")))
+    return is_valid_indian_mobile(phone)
+
+
+def booking_pin_ok(pin, slots):
+    """India: 6-digit pincode required. Abroad the postal code is optional (UAE / Qatar have none)."""
+    if cu.is_international(slots or {}):
+        return True
+    return len("".join(filter(str.isdigit, str(pin or "")))) == 6
 
 
 def build_summary_correction_note(problem, bad_phone=""):
@@ -31,7 +50,7 @@ def build_summary_correction_note(problem, bad_phone=""):
             "[BACKEND NOTE - not spoken by the patient. Do not read this note aloud.] "
             f"Your summary used mobile number {said_wrong}, but the patient said {said_right}. The summary must NOT be submitted. "
             f"Briefly apologise and recite the COMPLETE review summary again with mobile number {said_right}, ending with the "
-            "full sentence asking the patient to say 'submit' or 'cancel'. Use exactly the same language as your previous reply."
+            "full sentence asking the patient to say 'submit' or 'cancel'."
         )
     elif problem == "phone_unheard":
         ask = (f"The patient never actually said the number {bad_phone} - you may have guessed it. Ask the patient to say "
@@ -48,7 +67,7 @@ def build_summary_correction_note(problem, bad_phone=""):
             "[BACKEND NOTE - not spoken by the patient. Do not read this note aloud.] "
             "The appointment has NOT been submitted yet: submission only happens after the patient says 'submit' to a complete review summary. "
             "Briefly correct yourself, then recite the complete review summary (name, phone, city, pincode, concern, doctor) "
-            "and ask the patient to say 'submit' or 'cancel'. Use exactly the same language you used in your previous reply."
+            "and ask the patient to say 'submit' or 'cancel'."
         )
     else:
         field = {"name": "name", "pincode": "6-digit area pincode", "city": "city", "concern": "dental concern"}.get(problem, problem)
@@ -57,30 +76,55 @@ def build_summary_correction_note(problem, bad_phone=""):
         "[BACKEND NOTE - not spoken by the patient. Do not read this note aloud.] "
         "Your last review summary is NOT valid and must NOT be submitted. "
         f"{ask} Do NOT recite the summary or ask to submit in this reply. "
-        "Reply in one or two short sentences, in exactly the same language you used in your previous reply."
+        "Reply in one or two short sentences."
     )
 
 
 # Voice only, appended LAST to the system prompt so it overrides the shared prompt's Step 6 template and its many
 # "re-recite the full review summary" instructions (those made Riya build the summary herself and only correct the
 # phone number afterwards). The gatekeeper runs BEFORE any summary is spoken.
+LIVE_CITY_CONFIRMATION = (
+    "After the patient answers the city confirmation question in the live audio, call set_patient_location "
+    "before speaking. Pass confirmation='yes' for 'right', 'correct', 'yes', or an equivalent affirmative answer. "
+    "Pass confirmation='no' for a rejection, or postal_code if they gave a corrected code. "
+    "Wait for the tool to save the city before asking for the mobile number."
+)
+LIVE_PHONE_QUESTION = re.compile(
+    r"\b(?:mobile|phone|contact)\s+number\b|\b(?:provide|share|tell me)\b[^?]*\b(?:mobile|phone)\b"
+    r"|मोबाइल नंबर|मोबाईल नंबर|फ़ोन नंबर|फोन नंबर|મોબાઇલ નંબર|મોબાઈલ નંબર|ફોન નંબર",
+    re.IGNORECASE,
+)
+
 VOICE_REVIEW_GATEKEEPER_RULE = (
     "\n\n=========================================\n"
     "VOICE REVIEW SUMMARY GATEKEEPER (FINAL RULE - OVERRIDES EVERY OTHER INSTRUCTION ABOVE):\n"
+    "- At every booking step, if the patient's latest spoken phrase switches language, call set_reply_language "
+    "before the booking tool so its next question or summary uses that language. Continue the current step.\n"
     "- In this voice call you NEVER compose an appointment review summary yourself. Wherever the instructions above say "
     "'present', 'recite' or 're-recite' the review summary (Step 6, Step 7, after any update), do this instead: call the "
     "prepare_review_summary tool FIRST, before you say anything, and then speak ONLY what it returns.\n"
+    "- For international bookings the city question comes first. " + LIVE_CITY_CONFIRMATION + "\n"
+    "- If prepare_review_summary returns 'location_pending', follow its 'next_tool' immediately before speaking. "
+    "Use the most recent answer you heard to the location question. If you heard confirmation earlier, process it "
+    "now. If the patient has not answered or you are unsure, use set_patient_location to ask once.\n"
     "- As soon as the patient says their mobile number (or any number when you asked for it - even if it sounds too long "
     "or too short), call prepare_review_summary with the number exactly as you heard it, BEFORE replying. Do not judge "
-    "or fix the number yourself; the backend checks it against the patient's own words (exactly 10 digits).\n"
+    "or fix the number yourself. For international bookings, pass the exact digits you hear in the live audio. "
+    "The backend validates the number for the selected country. If you cannot hear it clearly, ask the patient to repeat.\n"
     "- Pass name and concern as YOU understood them from the patient (you hear the patient directly; the backend's "
     "speech transcript is often wrong). The concern is the dental problem the patient described - never a yes/no reply.\n"
     "- status 'ok': speak 'say_exactly' word for word and COMPLETELY, to the last word of the sentence asking to say "
     "'submit' or 'cancel'. It is deliberately short: do NOT read out the details (they are shown on screen).\n"
     "- status 'ask_again': speak ONLY 'say_now' - no summary, no details, no submit/cancel line.\n"
     "- NEVER call prepare_review_summary before the patient has said their mobile number. Before that, follow the normal "
-    "booking steps (concern -> consultation offer -> pincode -> doctor -> mobile number). Call it again only if the patient "
+    "booking steps (concern -> consultation offer -> country -> local postal code and city -> mobile number). Call it again only if the patient "
     "changes a detail AFTER the summary was shown.\n"
+    "- COUNTRY GATE: After clear agreement to book, call set_patient_location with ask_country=true and speak its question. "
+    "Wait for the patient's country answer and call set_patient_location again before asking for a postal code. "
+    "Continue with the Indian pincode flow only after the tool returns status 'india'. If agreement is unclear, clarify the booking offer first.\n"
+    "- If the patient declines booking, call set_patient_location with decline_booking=true before replying. "
+    "Continue helping with dental questions and leave booking closed until they explicitly ask to book again. "
+    "When they do, call set_patient_location with ask_country=true and reopen_requested=true.\n"
     "=========================================\n"
     "STAY ON TOPIC (FINAL RULE): you are ONLY Ultimate Smile Design's smile & dental consultant. Talk only about teeth, "
     "smiles, dental treatments, Ultimate Smile Design and the appointment. If the patient's words are about anything else "
@@ -90,6 +134,35 @@ VOICE_REVIEW_GATEKEEPER_RULE = (
     "patient (speech is often misheard), politely ask them to repeat - never invent a topic from a misheard word. The "
     "profession answer gets one short 'thank you' - never follow-up questions about their work."
 )
+
+
+VOICE_LANGUAGE_RULE = (
+    "Use the active reply language (Indian English at the first greeting). A name alone, even a full name, "
+    "a place, a number, or a brief acknowledgement such as yes, OK, haan or ji keeps that language. "
+    "Accept those answers normally. For example, after an English greeting, answer 'Nikhil' in English. "
+    "When you hear a meaningful phrase in another supported language (e.g. 'mera naam Nikhil hai'), "
+    "or hear the patient explicitly request a language, call set_reply_language before speaking or calling "
+    "a booking tool. Speak in the returned language. Judge this from the patient's audio, regardless of caption script."
+)
+VOICE_LANGUAGE_NAMES = {
+    "en": {"english", "अंग्रेजी", "अंग्रेज़ी"}, "hi": {"hindi", "हिंदी", "हिन्दी"},
+    "gu": {"gujarati", "ગુજરાતી"}, "mr": {"marathi", "मराठी"}, "bn": {"bengali", "বাংলা"},
+    "ta": {"tamil", "தமிழ்"}, "te": {"telugu", "తెలుగు"}, "kn": {"kannada", "ಕನ್ನಡ"},
+    "ml": {"malayalam", "മലയാളം"}, "pa": {"punjabi", "ਪੰਜਾਬੀ"}, "or": {"odia", "ଓଡ଼ିଆ"},
+}
+VOICE_LANGUAGE_TOOL = {
+    "name": "set_reply_language",
+    "description": "Change voice reply language after hearing a meaningful phrase or an explicit language request.",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "language": {"type": "STRING", "enum": list(VOICE_LANGUAGE_NAMES)},
+            "spoken_phrase": {"type": "STRING", "description": "The exact phrase you heard in the patient's audio."},
+            "language_cue": {"type": "STRING", "description": "Quote the sentence wording that identifies the language (e.g. 'mera naam'), or the language explicitly requested. Exclude names, places, numbers and acknowledgements. Leave empty if those were all you heard."},
+        },
+        "required": ["language", "spoken_phrase", "language_cue"],
+    },
+}
 
 
 APPOINTMENT_TOOL_DECLARATION = {
@@ -103,9 +176,9 @@ APPOINTMENT_TOOL_DECLARATION = {
                     "first_name": {"type": "STRING", "description": "Patient's confirmed first name"},
                     "last_name": {"type": "STRING", "description": "Patient's last name (or empty if not provided)"},
                     "email": {"type": "STRING", "description": "Patient's email address (optional, leave empty string if not provided)"},
-                    "phone": {"type": "STRING", "description": "Patient's confirmed 10-digit Indian mobile number (must start with 6, 7, 8 or 9)"},
+                    "phone": {"type": "STRING", "description": "Patient's confirmed mobile number (India: 10 digits starting 6-9; other countries: the national number for their country)"},
                     "city": {"type": "STRING", "description": "Patient's confirmed residence city (MUST be the patient's residence city where they live, e.g. Bhavnagar, NEVER the doctor's clinic city)"},
-                    "pincode": {"type": "STRING", "description": "Patient's confirmed 6-digit area pincode / postal code"},
+                    "pincode": {"type": "STRING", "description": "Patient's confirmed 6-digit area pincode (India) or postal code (other countries; may be empty where the country has none)"},
                     "message": {"type": "STRING", "description": "Patient's dental concern or consultation request notes"},
                     "doctor_name": {"type": "STRING", "description": "USD Authorised Dentist/Doctor name requested for the consultation (must be a verified USD authorised smile designer)"},
                     "is_cancel": {"type": "BOOLEAN", "description": "Whether the user requested to cancel the booking (true) or submit it (false)"}
@@ -119,7 +192,7 @@ APPOINTMENT_TOOL_DECLARATION = {
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
-                    "phone": {"type": "STRING", "description": "The patient's 10-digit mobile number exactly as you heard it"},
+                    "phone": {"type": "STRING", "description": "The complete mobile number exactly as heard, including any leading zero or country calling code the patient said. Pass an empty string when reviewing an update that did not include a new phone number."},
                     "doctor_name": {"type": "STRING", "description": "The USD doctor the patient chose, or empty if our team should guide them"},
                     "name": {"type": "STRING", "description": "Patient's name as YOU understood it from the patient (the backend transcript is unreliable), in the patient's language/script"},
                     "concern": {"type": "STRING", "description": "Patient's dental problem as YOU understood it, short, in the patient's language (e.g. 'દાંતમાં દુખાવો'). It is the problem they described - NEVER a yes/no answer like 'હા' / 'करू ने' / 'ok'"},
@@ -127,6 +200,24 @@ APPOINTMENT_TOOL_DECLARATION = {
                     "concern_english": {"type": "STRING", "description": "The same dental problem in short plain English (e.g. 'Tooth pain', 'Gaps between teeth'), for the clinic CRM"}
                 },
                 "required": ["phone"]
+            }
+        },
+        {
+            "name": "set_patient_location",
+            "description": "Call with ask_country=true as soon as the patient clearly agrees to book. Call again after hearing their country in the live audio. For international bookings, also call for their postal code, city confirmation, or city answer. Ask the patient to repeat if unclear. Speak only 'say_now' when provided.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "ask_country": {"type": "BOOLEAN", "description": "True only when the patient has just clearly agreed to book and you need to ask their country before any postal code."},
+                    "decline_booking": {"type": "BOOLEAN", "description": "True when you hear the patient decline an appointment they have not submitted."},
+                    "reopen_requested": {"type": "BOOLEAN", "description": "True only when the patient explicitly asks to book again after declining."},
+                    "country": {"type": "STRING", "description": "Country heard in the audio, in English (e.g. 'Australia' when the patient says 'Austrelia'), or an explicitly named city such as Dubai. Omit on postal and city turns."},
+                    "country_correction": {"type": "BOOLEAN", "description": "True only when the patient explicitly says their previously selected country should change. Include the country they actually named."},
+                    "postal_code": {"type": "STRING", "description": "The complete postal code or ZIP code you just heard, keeping all digits and letters, including leading zeroes"},
+                    "postal_unavailable": {"type": "BOOLEAN", "description": "True only if the patient says they do not know or do not have their postal code"},
+                    "city": {"type": "STRING", "description": "City the patient explicitly named when asked for their city"},
+                    "confirmation": {"type": "STRING", "description": "The patient's actual yes/no response when asked to confirm the city returned by the postal lookup"}
+                }
             }
         },
         {
@@ -293,18 +384,30 @@ class GeminiClient:
                         active_mem.append("- APPOINTMENT ALREADY SUBMITTED: Do NOT re-ask for booking details.")
 
                     # Language guidance
-                    if getattr(self.session, 'has_user_spoken', False) and getattr(self.session, 'is_language_established', False) and getattr(self.session, 'current_language', None):
-                        active_mem.append(f"- MANDATORY LANGUAGE: The user's active language is {self.session.current_language}. You MUST respond in {self.session.current_language} beginning with [{self.session.current_language}]! However, if the user switches to another Indian language (e.g. Hindi, Gujarati, Marathi, English), immediately switch with them to that language!")
-                    else:
-                        active_mem.append("- STARTING LANGUAGE & DYNAMIC MATCHING: Start with greeting in Indian English beginning with [en-IN]. However, as soon as the user speaks in Hindi [hi-IN], Gujarati [gu-IN], Marathi [mr-IN], or any of the 11 supported Indian languages, YOU MUST IMMEDIATELY SWITCH YOUR RESPONSE to that same language and prefix with the appropriate language tag!")
+                    active_mem.append(f"Active reply language: {self.session.current_language or 'en-IN'}. {VOICE_LANGUAGE_RULE}")
 
                     # Sequential step-by-step appointment flow enforcement (STRICT ONE QUESTION AT A TIME)
-                    if not self.session.user_name:
+                    if self.session.consultation_declined and not self.session.booking_slots.get("is_submitted"):
+                        active_mem.append("- The patient declined booking. Continue with dental questions until they explicitly ask to book again.")
+                    elif not self.session.user_name:
                         active_mem.append("- CURRENT SEQUENTIAL STEP (MANDATORY): Step 1 (Greeting & Patient Name). Ask warmly for their name. DO NOT ask for City, Concern, Doctor, Pincode, or Phone yet!")
                     elif not self.session.user_concern:
                         active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 1 done -> Step 2 (Dental Concern). Greet {self.session.user_name} by name and ask ONLY what specific dental concern or smile goal they have (do NOT ask them to confirm their name). YOU ARE STRICTLY FORBIDDEN from asking for City, Doctor, Pincode, or Phone!")
                     elif not getattr(self.session, "consultation_agreed", False) and not self.session.booking_slots.get("pincode"):
                         active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 2 confirmed -> Step 2.5 (Consultation Permission Gate). Acknowledge dental concern ({self.session.user_concern}), and ask ONLY: 'Would you like me to help book a consultation appointment with our USD Authorised Smile Designer for this?'. YOU MUST WAIT FOR PATIENT TO SAY YES before asking for Pincode! DO NOT ask about profession, city, or pincode in this turn!")
+                    elif not self.session.booking_slots.get("country_code") and not self.session.booking_slots.get("pincode") and not getattr(self.session, "city_confirm_needed", False):
+                        active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 3.0 (Country FIRST). Ask ONLY: '{cu.intl_text('ask_country', self._voice_lang())}' NEVER assume India from the patient's language or accent. When they answer, call set_patient_location with the country and speak its 'say_now'. Do NOT ask for pincode yet!")
+                    elif cu.is_international(self.session.booking_slots) and not self.session.booking_slots.get("city"):
+                        _cc = self.session.booking_slots.get("country_code")
+                        prompt = cu.intl_text(self.international_location_prompt(), self._voice_lang(), _cc,
+                                              postal=self.session.booking_slots.get("pincode") or "",
+                                              city=self.session.intl_city_label)
+                        active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): International booking. Ask ONLY: '{prompt}' and pass the answer to set_patient_location.")
+                    elif cu.is_international(self.session.booking_slots):
+                        if not self.session.booking_slots.get("phone"):
+                            active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Say: '{cu.intl_text('ask_phone', self._voice_lang(), self.session.booking_slots.get('country_code'))}' When they say it, call prepare_review_summary.")
+                        elif not self.session.booking_slots.get("is_submitted"):
+                            active_mem.append("- CURRENT SEQUENTIAL STEP (MANDATORY): Call prepare_review_summary for the international booking review.")
                     elif not self.session.booking_slots.get("pincode") and not getattr(self.session, "city_confirm_needed", False):
                         active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 3 (6-Digit Area Pincode FIRST). Ask ONLY for their 6-digit area pincode ('To help find your nearest USD Authorised Smile Designer, could you please tell me your 6-digit area pincode?'). YOU ARE STRICTLY FORBIDDEN from asking for city, doctor, or phone in this turn! DO NOT ask about profession!")
                     elif getattr(self.session, "city_confirm_needed", False) or (getattr(self.session, "pending_pincode", None) and not getattr(self.session, "city_pincode_locked", False)):
@@ -336,7 +439,11 @@ class GeminiClient:
                     elif not self.session.booking_slots.get("is_submitted"):
                         active_mem.append(f"- CURRENT SEQUENTIAL STEP (MANDATORY): Step 6 (Review Summary). Call prepare_review_summary and speak its 'say_exactly' text completely (it ends with: 'Please say submit to submit this appointment request to our clinic team, or say cancel to cancel it.').")
 
-                    active_mem.append("- STRICT 10-DIGIT PHONE INTEGRITY: Indian mobile phone numbers have EXACTLY 10 digits AND start with 6, 7, 8 or 9 (e.g. a number starting with 1 or 0 is invalid - ask again). NEVER invent, add, or complete digits to an incomplete phone number (e.g. if the user says 9 digits like '984255299', NEVER add a 10th digit and DO NOT show review summary). If the phone number does not have exactly 10 digits, YOU MUST NOT recite the review summary under ANY circumstances! Tell the user that their number has fewer or more digits and ask for the complete 10-digit number.")
+                    if cu.is_international(self.session.booking_slots):
+                        _cc = self.session.booking_slots.get("country_code")
+                        active_mem.append(f"- INTERNATIONAL PHONE RULE: The patient lives in {cu.country_name(_cc)}. Their mobile number has {cu.phone_digits_hint(_cc)} digits without the {cu.dial_code(_cc)} country code. Use prepare_review_summary to check what they say.")
+                    else:
+                        active_mem.append("- STRICT 10-DIGIT PHONE INTEGRITY: Indian mobile phone numbers have EXACTLY 10 digits AND start with 6, 7, 8 or 9 (e.g. a number starting with 1 or 0 is invalid - ask again). NEVER invent, add, or complete digits to an incomplete phone number (e.g. if the user says 9 digits like '984255299', NEVER add a 10th digit and DO NOT show review summary). If the phone number does not have exactly 10 digits, YOU MUST NOT recite the review summary under ANY circumstances! Tell the user that their number has fewer or more digits and ask for the complete 10-digit number.")
                     if getattr(self.session, "profession_asked", False) or getattr(self.session, "consultation_agreed", False) or self.session.booking_slots.get("pincode") or self.session.booking_slots.get("city"):
                         active_mem.append("- PROFESSION INQUIRY FORBIDDEN DURING BOOKING: Do NOT ask 'what is your profession?' while the booking is in progress." + ("" if getattr(self.session, "profession_done", False) else " EXCEPTION (mandatory, once): it has never been asked yet, so right after the appointment is submitted or cancelled, or when the patient declines the consultation/appointment, your reply MUST end with ONLY the profession question."))
                     active_mem.append("- ONE QUESTION PER REPLY (ABSOLUTE): Every reply may contain only ONE question. If you need several things, ask the single most important one now and the next one in a later reply. NEVER combine two asks, for example: name confirmation + dental concern, dental concern + consultation offer, pincode/city confirmation + profession or consultation offer, dentist names + phone number. The profession question is always its own reply.")
@@ -378,7 +485,7 @@ class GeminiClient:
                                     "silenceDurationMs": 900
                                 }
                             },
-                            "tools": [APPOINTMENT_TOOL_DECLARATION],
+                            "tools": [{"functionDeclarations": [VOICE_LANGUAGE_TOOL, *APPOINTMENT_TOOL_DECLARATION["functionDeclarations"]]}],
                             "sessionResumption": resumption_config,
                             "contextWindowCompression": {
                                 "slidingWindow": {}
@@ -467,10 +574,12 @@ class GeminiClient:
             "not ours without it); if the patient wants a doctor in another city (e.g. travelling to Bharuch), call "
             "find_dentists_in_city - never answer with the nearest list of their own pincode instead; when you name a doctor, also say the doctor's clinic city. NEVER speak the appointment review "
             "summary yourself: call prepare_review_summary first and speak its 'say_exactly' text completely.] "
+            f"Active reply language: {self._voice_lang()}. Names and brief confirmations keep this language. | "
             f"Name: {_val(confirmed.get('user_name'), heard_self)} | Concern: {_val(confirmed.get('user_concern'), heard_self)} | "
             f"City: {_val(bs.get('city'), (str(getattr(self.session, 'pending_display_city', '') or getattr(self.session, 'pending_city', '')) + ' (from the pincode; area question already asked - do NOT ask it again; when the patient says yes, call find_nearest_dentists again with the pincode and tell the doctors it returns)') if getattr(self.session, 'pending_city', None) else 'not given yet')} | "
             f"Pincode: {_val(bs.get('pincode') or getattr(self.session, 'pending_pincode', ''))} | "
-            f"Phone: {_val(bs.get('phone')) if is_valid_indian_mobile(bs.get('phone')) else 'not given yet'} | "
+            f"Country: {bs.get('country') or 'not asked yet - ask which country they live in before any pincode'} | "
+            f"Phone: {_val(bs.get('phone')) if booking_phone_ok(bs.get('phone'), bs) else 'not given yet'} | "
             f"Nearest doctors already told to the patient: {docs_txt or 'none yet'} | "
             f"Doctor: {bs.get('doctor_name') or 'optional - use the doctor the patient chose in the conversation, if any'} | "
             f"Appointment submitted: {'yes' if bs.get('is_submitted') else 'no'}"
@@ -485,6 +594,14 @@ class GeminiClient:
                 f"MUST end with ONLY this question in the patient's language: '{profession_question_text(self._voice_lang())}'. "
                 "Do not ask it in the middle of the booking."
             )
+        if self.session.pending_intl_city and not bs.get("city"):
+            summary += f" | Pending city confirmation: {self.session.pending_intl_city} for postal code {bs['pincode']}. {LIVE_CITY_CONFIRMATION}"
+        elif self.session.intl_city_options and not bs.get("city"):
+            summary += f" | Postal code {bs['pincode']} covers several places. Pass the city the patient names to set_patient_location."
+        if self.session.asking_for_field == "phone":
+            summary += " | Current step: the patient was asked for their mobile number. Continue from that answer."
+        if self.session.consultation_declined and not bs.get("is_submitted"):
+            summary += " | The patient declined booking. Continue with dental questions until they explicitly ask to book again."
         if summary == getattr(self.session, "last_synced_slot_summary", None):
             return
         try:
@@ -526,6 +643,25 @@ class GeminiClient:
     # ---------------------------------------------------------------------------------------------
     def _voice_lang(self):
         return getattr(self.session, "current_language", None) or "en-IN"
+
+    def set_reply_language(self, args):
+        code = args.get("language")
+        phrase = str(args.get("spoken_phrase") or "").casefold().strip(" .,!?:;।")
+        cue = str(args.get("language_cue") or "").casefold().strip(" .,!?:;।")
+        if not isinstance(code, str) or code not in VOICE_LANGUAGE_NAMES or not cue or cue not in phrase:
+            return {"reply_language": self._voice_lang()}
+        words = {word.strip(".,!?।") for word in phrase.split()}
+        acknowledgements = {"ok", "okay", "yes", "no", "ji", "haan", "ha", "sure", "right", "जी", "हाँ", "हां",
+                            "हूँ", "ओके", "ठीक", "है", "હા", "જી", "ઓકે", "ઠીક", "છે"}
+        meaningful = (
+            len(words) > 1 and any(c.isalpha() for c in cue)
+            and not words <= acknowledgements
+            and phrase != (self.session.user_name or "").casefold()
+        )
+        if meaningful or cue in VOICE_LANGUAGE_NAMES[code]:
+            self.session.current_language = f"{code}-IN"
+            self.session.is_language_established = True
+        return {"reply_language": self._voice_lang()}
 
     @staticmethod
     def _dentist_entries(dentists):
@@ -604,7 +740,7 @@ class GeminiClient:
         return result
 
     # Words for "pincode" in the languages Riya speaks (used to know Riya actually asked for it)
-    PINCODE_WORDS = ("pincode", "pin code", "postal code", "પિનકોડ", "પિન કોડ", "पिनकोड", "पिन कोड", "পিনকোড",
+    PINCODE_WORDS = ("pincode", "pin code", "postal code", "postcode", "zip code", "પિનકોડ", "પિન કોડ", "पिनकोड", "पिन कोड", "পিনকোড",
                      "பின்கோட்", "పిన్‌కోడ్", "పిన్ కోడ్", "ಪಿನ್‌ಕೋಡ್", "ಪಿನ್ ಕೋಡ್", "പിൻകോഡ്", "ਪਿਨਕੋਡ", "ପିନକୋଡ୍")
 
     @staticmethod
@@ -626,11 +762,58 @@ class GeminiClient:
 
     def track_pincode_request(self, bot_text):
         """Remember that Riya asked the patient for their pincode (a question without a 6-digit number in it)."""
-        if not bot_text:
+        if not bot_text or self.session.booking_slots.get("country_code") != "IN":
             return
         low = bot_text.lower()
         if any(w in low for w in self.PINCODE_WORDS) and not re.search(r"\d{6}", self._ascii_digits(bot_text)):
             self.session.pincode_asked_by_bot = True
+
+    def _hold_audio_until_country_check(self):
+        session = self.session
+        return not session.consultation_declined and not session.booking_slots.get("country_code") and (
+            session.consultation_offered or session.consultation_agreed or session.asking_for_field == "country"
+            or consultation_requested_in_text(session.current_user_transcription)
+            or consultation_requested_in_text(self._typed_turn_text())
+        )
+
+    def _track_consultation_offer(self, text):
+        if not self.session.consultation_declined and not self.session.booking_slots.get("country_code") and re.search(
+            r"book.{0,55}(?:appointment|consultation)|(?:appointment|consultation).{0,55}book|"
+            r"(?:अपॉ?इंटमेंट|कंसल्टेशन).{0,35}बुक|(?:અપૉઇન્ટમેન્ટ|અપોઇન્ટમેન્ટ|કન્સલ્ટેશન).{0,35}બુક",
+            text, re.IGNORECASE,
+        ):
+            self.session.consultation_offered = True
+
+    def _ask_country(self):
+        self.session.asking_for_field = "country"
+        self.session.voice_country_question_turn = self.session.current_voice_turn_id
+        return {
+            "status": "country_required",
+            "say_now": cu.intl_text("ask_country", self._voice_lang()),
+            "message": "Say only 'say_now'. Wait for the country answer, then call set_patient_location with that country.",
+        }
+
+    def _track_live_decline(self, *, allow_short=False):
+        session = self.session
+        if not session.booking_slots.get("is_submitted") and consultation_declined_in_text(
+            session.current_user_transcription,
+            allow_short=allow_short and session.consultation_offered and not session.consultation_agreed,
+        ):
+            session.decline_consultation()
+
+    async def _flush_live_audio(self):
+        buffer = self.session.live_pcm_buffer
+        # Each message carries at most one second of 24 kHz, 16-bit mono audio.
+        while len(buffer) >= 2:
+            size = min(48000, len(buffer) - len(buffer) % 2)
+            await self.send_json({
+                "type": "audio_chunk",
+                "audioBase64": wrap_pcm_to_wav_base64(buffer[:size], 24000),
+                "index": self.session.chunk_index,
+            })
+            del buffer[:size]
+            ios_debug_log(self.session, "srv_audio_out", i=self.session.chunk_index, ms=size // 48)
+            self.session.chunk_index += 1
 
     PHONE_UNHEARD_11 = {
         "gu": "માફ કરશો, મને તમારો મોબાઇલ નંબર બરાબર સંભળાયો નહીં. શું તમે તમારો 10 અંકનો મોબાઇલ નંબર ફરીથી ધીમેથી જણાવશો?",
@@ -655,6 +838,109 @@ class GeminiClient:
                 said.append(extra)
         return said
 
+    def _typed_turn_text(self):
+        text = self.session.latest_typed_user_text.strip()
+        return "" if text.startswith("SYSTEM INSTRUCTION") else text
+
+    def set_patient_location(self, args):
+        """Validate the location Gemini heard in the live audio or the patient typed."""
+        with self.session.intl_location_lock:
+            return self._apply_patient_location(args)
+
+    def _apply_patient_location(self, args):
+        session = self.session
+        slots = session.booking_slots
+        code = slots.get("country_code")
+        turn = session.current_voice_turn_id
+        if not slots.get("is_submitted"):
+            if args.get("decline_booking") is True:
+                session.decline_consultation()
+            if session.consultation_declined:
+                if args.get("reopen_requested") is not True or args.get("decline_booking") is True:
+                    return {"status": "booking_declined", "message": "Acknowledge and continue with dental questions until the patient explicitly asks to book again."}
+                session.consultation_declined = False
+                session.consultation_agreed = True
+        if not code and (args.get("ask_country") is True or session.voice_country_question_turn == turn):
+            if args.get("ask_country") is True:
+                session.consultation_agreed = True
+                session.consultation_declined = False
+            return self._ask_country()
+        field = session.asking_for_field
+        if session.pending_intl_city and not slots.get("city"):
+            field = session.asking_for_field = "intl_city_confirm"
+        if getattr(session, "_intl_last_turn", None) != turn and session.intl_location_handled_turn != turn:
+            text = self._typed_turn_text()
+            if not text:
+                country = str(args.get("country") or "").strip()
+                if not code or field == "country":
+                    text = country
+                elif country and args.get("country_correction") is True:
+                    text = f"change country to {country}"
+                elif field == "intl_city_confirm":
+                    text = str(args.get("confirmation") or args.get("postal_code") or args.get("city") or "")
+                elif field == "intl_city":
+                    text = str(args.get("postal_code") or args.get("city") or "")
+                    if not text and session.intl_city_options and args.get("confirmation") == "no":
+                        text = "none of these"
+                elif code != "IN" and (not slots.get("city") or cu.missing_brazil_cep(slots)):
+                    text = str(args.get("postal_code") or "")
+                    if not text:
+                        text = cu.extract_postal(args.get("city"), code) or ""
+                    if not text and args.get("postal_unavailable") is True:
+                        text = "I don't know my postal code"
+            if text:
+                history = session.latest_client_history or session.get_history_turns()
+                self.conversation_manager._update_country_and_international(text, history)
+                session.intl_location_handled_turn = turn
+            else:
+                session.intl_reply_key = None
+
+        code = slots.get("country_code")
+        if code == "IN":
+            return {"status": "india", "message": "The patient lives in India. Continue with Step 3: ask ONLY for their 6-digit area pincode, then call find_nearest_dentists as usual."}
+        if not code:
+            return {"status": "ask_again", "say_now": cu.intl_text("country_unclear", self._voice_lang())}
+
+        key = session.intl_reply_key
+        if not key or key == "review":
+            key = self.international_location_prompt()
+        status = {"ask_phone": "ok", "confirm_city": "confirm_city", "postal_not_found": "postal_not_found",
+                  "postal_invalid": "ask_again"}.get(key, "need_location")
+        message = "Speak only 'say_now' and wait."
+        if key == "confirm_city":
+            message += " " + LIVE_CITY_CONFIRMATION
+        elif key == "ask_phone":
+            message += " The city is saved. Call prepare_review_summary after the patient gives their mobile number in a new turn."
+        elif key in ("postal_not_found", "choose_city"):
+            message += " If the patient gives a corrected code, pass it as postal_code. If they name a city, pass it as city."
+        else:
+            message += " Pass the next location answer to set_patient_location."
+        return {
+            "status": status,
+            "country": slots["country"],
+            "city": slots.get("city") or "",
+            "postal_code": slots.get("pincode") or "",
+            "next_tool": "prepare_review_summary" if key == "ask_phone" else "set_patient_location",
+            "say_now": cu.intl_text(key, self._voice_lang(), code,
+                                     postal=slots.get("pincode") or session.intl_unmatched_postal,
+                                     city=session.intl_city_label or slots.get("city") or ""),
+            "message": message,
+        }
+
+    def international_location_prompt(self):
+        session = self.session
+        if cu.missing_brazil_cep(session.booking_slots):
+            return "ask_postal"
+        if session.booking_slots.get("city"):
+            return "ask_phone"
+        if session.pending_intl_city:
+            return "confirm_city"
+        if session.intl_city_options:
+            return "choose_city"
+        if session.asking_for_field == "intl_city" or not cu.has_postal_code(session.booking_slots.get("country_code")):
+            return "ask_city"
+        return "ask_postal"
+
     async def prepare_review_summary(self, args):
         """Server-checked review summary: Riya used to recite a summary with a number she never heard and only
         afterwards say the number was missing; and she sometimes cut the closing 'say submit or cancel' sentence."""
@@ -662,6 +948,8 @@ class GeminiClient:
         from voice_agent.services.appointment_service import is_matched_doctor
         lang = self._voice_lang()[:2].lower()
         bs = self.session.booking_slots
+        if self.session.consultation_declined and not bs.get("is_submitted"):
+            return {"status": "booking_declined", "message": "Continue with dental questions until the patient explicitly asks to book again."}
 
         def ask(field, say_now=None):
             self.session.asking_for_field = field
@@ -687,9 +975,40 @@ class GeminiClient:
         # Too early: the gatekeeper is only for the moment the patient has given their mobile number (the last
         # step). Called right after the concern it answered "pincode missing", so Riya skipped the consultation offer
         # and kept repeating "before submitting, tell me your pincode".
+        intl_code = bs.get("country_code") if cu.is_international(bs) else None
         pin_now = "".join(filter(str.isdigit, str(bs.get("pincode") or "")))
-        number_said = phone_from_user_turns(self._user_turn_texts(), pin_now)[0] != "none"
-        if not number_said and not normalize_mobile(bs.get("phone")):
+        if not bs.get("country_code"):
+            return ask("country", cu.intl_text("ask_country", lang))
+        if intl_code:
+            if cu.missing_brazil_cep(bs):
+                return ask("intl_postal", cu.intl_text("ask_postal", lang, intl_code))
+            if not bs.get("city"):
+                message = "Call set_patient_location now with the last answer you heard to the location question. "
+                missing = self.session.asking_for_field
+                if self.session.pending_intl_city:
+                    missing = "intl_city_confirm"
+                    message += (
+                        f"The server is waiting for confirmation of {self.session.pending_intl_city}. "
+                        + LIVE_CITY_CONFIRMATION +
+                        " If the patient already confirmed the city on an earlier audio turn, use that answer now."
+                    )
+                return {"status": "location_pending", "missing": missing,
+                        "next_tool": "set_patient_location", "message": message}
+            if self.session.intl_location_handled_turn == self.session.current_voice_turn_id:
+                return ask("phone", cu.intl_text("ask_phone", lang, intl_code))
+            typed = self._typed_turn_text()
+            phone_input = _arg("phone")
+            if typed:
+                phone_input = typed if re.search(r"\d", typed) else ""
+            national = cu.normalize_phone(phone_input, intl_code)
+            if not phone_input and self.session.asking_for_field != "phone":
+                national = cu.normalize_phone(bs.get("phone"), intl_code)
+            if not national:
+                bs["phone"] = ""
+                self.session.last_review_summary_slots = {}
+                self.session.last_review_summary_text = ""
+                return ask("phone", cu.intl_text("phone_invalid", lang, intl_code))
+        elif phone_from_user_turns(self._user_turn_texts(), pin_now)[0] == "none" and not normalize_mobile(bs.get("phone")):
             print("[REVIEW-SUMMARY] called before the patient gave a mobile number -> not_ready")
             return {
                 "status": "not_ready",
@@ -708,43 +1027,52 @@ class GeminiClient:
             return ask("name")
         if not concern:
             return ask("concern")
-        if len(pin) != 6:
+        if intl_code:
+            phone = cu.format_e164(national, intl_code)
+            pin = bs.get("pincode") or "-"
+        if not intl_code and len(pin) != 6:
             return ask("pincode")
         if not city:
             return ask("city")
-        # The patient's own transcript is the source of truth for the number (what the screen shows is what is
-        # submitted). Riya used to invent numbers ('9193862652') or keep 10 digits of a 12-digit answer.
-        said = self._user_turn_texts()
-        status, said_phone = phone_from_user_turns(said, pin)
-        if status == "wrong_length":
-            print(f"[REVIEW-SUMMARY] patient said {said_phone} ({len(said_phone)} digits), not a 10-digit mobile -> asking again")
-            bs["phone"] = ""
-            return ask("phone", self.PHONE_NOT_10.get(lang))
-        if status == "ok":
-            if phone and phone != said_phone:
-                print(f"[REVIEW-SUMMARY] Gemini passed phone {phone}, transcript says {said_phone} -> using the transcript")
-            phone = said_phone
-        else:
-            # Nothing usable in the transcript (spoken digits are often transcribed only partly): fall back to
-            # Gemini's number, but only if 4+ of the patient's digits are inside it (or it is the stored number)
-            if not phone and normalize_mobile(bs.get("phone")):
-                phone = normalize_mobile(bs.get("phone"))
+        if not intl_code:
+            # The patient's own transcript is the source of truth for the number (what the screen shows is what is
+            # submitted). Riya used to invent numbers ('9193862652') or keep 10 digits of a 12-digit answer.
+            said = self._user_turn_texts()
+            status, said_phone = phone_from_user_turns(said, pin)
+            if status == "wrong_length":
+                print(f"[REVIEW-SUMMARY] patient said {said_phone} ({len(said_phone)} digits), not a 10-digit mobile -> asking again")
+                bs["phone"] = ""
+                return ask("phone", self.PHONE_NOT_10.get(lang))
+            if status == "ok":
+                if phone and phone != said_phone:
+                    print(f"[REVIEW-SUMMARY] Gemini passed phone {phone}, transcript says {said_phone} -> using the transcript")
+                phone = said_phone
+            else:
+                # Nothing usable in the transcript (spoken digits are often transcribed only partly): fall back to
+                # Gemini's number, but only if 4+ of the patient's digits are inside it (or it is the stored number)
+                if not phone and normalize_mobile(bs.get("phone")):
+                    phone = normalize_mobile(bs.get("phone"))
+                if not is_valid_indian_mobile(phone):
+                    return ask("phone", self.PHONE_UNHEARD_11.get(lang))
+                said_digits = [re.sub(r"\D", "", self._ascii_digits(t)) for t in said]
+                heard = phone == normalize_mobile(bs.get("phone")) or \
+                    any(phone in d or (len(d) >= 4 and d in phone) for d in said_digits)
+                if not heard:
+                    print(f"[REVIEW-SUMMARY] phone {phone} was never said by the patient -> asking again")
+                    return ask("phone", self.PHONE_UNHEARD_11.get(lang))
             if not is_valid_indian_mobile(phone):
-                return ask("phone", self.PHONE_UNHEARD_11.get(lang))
-            said_digits = [re.sub(r"\D", "", self._ascii_digits(t)) for t in said]
-            heard = phone == normalize_mobile(bs.get("phone")) or \
-                any(phone in d or (len(d) >= 4 and d in phone) for d in said_digits)
-            if not heard:
-                print(f"[REVIEW-SUMMARY] phone {phone} was never said by the patient -> asking again")
-                return ask("phone", self.PHONE_UNHEARD_11.get(lang))
-        if not is_valid_indian_mobile(phone):
-            return ask("phone", self.PHONE_NOT_10.get(lang))
+                return ask("phone", self.PHONE_NOT_10.get(lang))
 
         doctor = str(args.get("doctor_name") or bs.get("doctor_name") or "").strip()
         if doctor:
             doctor = is_matched_doctor(doctor, city=None) or ""
         is_update = bool(bs.get("is_submitted") or bs.get("submission_id"))
-        text = build_review_summary_text(lang, name, phone, city, pin, concern, doctor, is_update=is_update)
+        text = build_review_summary_text(lang, name, phone, city, pin, concern, doctor, is_update=is_update,
+                                         country=bs.get("country") if intl_code else None)
+        if intl_code and bs.get("is_submitted") and phone != bs.get("phone"):
+            bs["old_phone"] = bs.get("phone")
+            bs["is_submitted"] = False
+            self.session.slots_edited_after_submit = True
 
         # The CRM gets Riya's English version when she gives one (otherwise the service transliterates)
         crm_parts = (name_en or name).split()
@@ -818,7 +1146,11 @@ class GeminiClient:
         nearest list of the patient's own pincode, so 'give me a Bharuch doctor' got Surat doctors again."""
         from voice_agent.ai.conversation_manager import CITY_DOCTORS
         from voice_agent.services.dentist_service import get_nearest_dentists_for_travel, get_doctor_city
-        city = self._known_city(args.get("city")) or str(args.get("city") or "").strip().title()
+        requested_city = str(args.get("city") or "").strip()
+        if (not requested_city or requested_city.casefold() in {"nearest", "nearby", "closest"}
+                or self.session.latest_typed_user_text.lstrip().startswith("SYSTEM INSTRUCTION")):
+            return {"status": "no_destination", "message": "Continue the current booking step. A travel search needs a city the patient explicitly requests."}
+        city = self._known_city(requested_city) or requested_city.title()
         bs = self.session.booking_slots
         dentists = []
         try:
@@ -962,12 +1294,35 @@ class GeminiClient:
         if not ws:
             return
         try:
-            await ws.send(json.dumps({"realtimeInput": {"text": note}}))
+            await ws.send(json.dumps({"realtimeInput": {"text": f"{note} Use the patient's active reply language ({self._voice_lang()})."}}))
             self.session.awaiting_correction_reply = True
         except Exception as e:
             print(f"[WARN] Failed to send correction note to Gemini Live: {e}")
 
+    def _booking_in_progress(self):
+        return (self.session.consultation_agreed and not self.session.consultation_declined
+                and not self.session.booking_slots.get("is_submitted"))
+
+    async def _repair_booking_caption(self, audio, language, entry, index, caption_id):
+        try:
+            text = await asyncio.wait_for(transcribe_voice_data(audio, 24000, language_code=language), timeout=12)
+            recovered = clean_assistant_text(text).strip()
+            original = entry[1]
+            history = self.session.transcript_history
+            if (len(recovered) > len(original) and recovered.casefold().startswith(original.casefold().rstrip(".!?।…"))
+                    and index < len(history) and history[index] is entry):
+                history[index] = ("model", recovered)
+                print(f"[VOICE CAPTION] RIYA: {recovered}")
+                if self.session.is_client_connected:
+                    await self.send_json({"type": "booking_caption", "captionId": caption_id, "text": recovered})
+        except (TimeoutError, httpx.HTTPError, OSError):
+            pass
+
     async def gemini_recv_loop(self, ws):
+        city_caption = None
+        booking_script = None
+        muted_turn = None
+        caption_audio_offset = 0
         try:
             async for raw_message in ws:
                 if not self.session.is_client_connected:
@@ -996,6 +1351,8 @@ class GeminiClient:
                     print("[INFO] Gemini Live Setup Complete!")
                     ios_debug_log(self.session, "srv_setup_complete")
                     self.session.setup_complete_event.set()
+                    if self.session.user_name or self.session.booking_slots.get("country_code"):
+                        await self.sync_slots_to_gemini()
                     continue
 
                 # ⚡ TOOL CALL HANDLING (Direct Appointment Submission via Ultimate Smile Design API) ⚡
@@ -1004,16 +1361,32 @@ class GeminiClient:
                     function_calls = tool_call.get("functionCalls", [])
                     ios_debug_log(self.session, "srv_tool_call", names=[fc.get("name") for fc in function_calls])
                     function_responses = []
-                    for fc in function_calls:
+                    # Localized booking questions in the same batch use the newly requested language.
+                    for fc in sorted(function_calls, key=lambda call: call.get("name") != "set_reply_language"):
                         func_name = fc.get("name")
                         func_id = fc.get("id")
                         args = fc.get("args", {})
                         print(f"[INFO] Gemini Live invoked Tool Call: {func_name} with args: {args}")
+                        if func_name == "set_reply_language":
+                            result = self.set_reply_language(args)
+                            function_responses.append({"name": func_name, "id": func_id, "response": {"result": result}})
+                            continue
+                        if (func_name == "submit_appointment_booking" and self.session.consultation_declined
+                                and not self.session.booking_slots.get("is_submitted")):
+                            function_responses.append({"name": func_name, "id": func_id, "response": {"result": {
+                                "status": "booking_declined",
+                                "message": "Continue with dental questions until the patient explicitly asks to book again.",
+                            }}})
+                            continue
                         # Show "Riya is submitting / cancelling / checking" so the pause during the lookup is explained
                         if func_name == "submit_appointment_booking":
                             await self.send_json({"type": "status_update", "status": "cancelling" if args.get("is_cancel") else "submitting"})
                         elif func_name in ("find_nearest_dentists", "prepare_review_summary", "check_doctor", "find_dentists_in_city"):
                             await self.send_json({"type": "status_update", "status": "checking"})
+                        elif func_name == "set_patient_location":
+                            code = self.session.booking_slots.get("country_code")
+                            if cu.is_international(code) and cu.extract_postal(args.get("postal_code") or args.get("city"), code):
+                                await self.send_json({"type": "status_update", "status": "checking"})
                         if func_name == "submit_appointment_booking":
                             # ⚡ The last VALID review summary the patient heard is the source of truth ⚡
                             # (last_review_summary_slots only ever holds summaries whose every field passed validation)
@@ -1043,7 +1416,10 @@ class GeminiClient:
                                             full_args[k] = v
                             
                             # 2. Update with args from tool call
+                            international = cu.is_international(self.session.booking_slots)
                             for k, v in args.items():
+                                if international and k in ("country", "country_code", "pincode", "city", "phone", "doctor_name"):
+                                    continue
                                 if v and str(v).lower() not in ['none', 'null', '-', '--']:
                                     full_args[k] = v
                                     self.session.booking_slots[k] = v
@@ -1052,32 +1428,33 @@ class GeminiClient:
                             curr_u_text = str(getattr(self.session, 'current_user_transcription', '') or getattr(self.session, 'latest_typed_user_text', '') or '')
                             curr_u_lower = curr_u_text.lower().strip()
                             
-                            user_phone_match = re.search(r'\b[6-9]\d{9}\b', curr_u_text)
-                            if user_phone_match:
-                                new_phone = user_phone_match.group(0)
-                                if self.session.booking_slots.get('phone') and self.session.booking_slots['phone'] != new_phone:
-                                    self.session.booking_slots['old_phone'] = self.session.booking_slots['phone']
-                                full_args['phone'] = new_phone
-                                self.session.booking_slots['phone'] = new_phone
-                            elif args.get('phone'):
-                                arg_phone = ''.join(filter(str.isdigit, str(args['phone'])))
-                                if len(arg_phone) == 10:
-                                    if self.session.booking_slots.get('phone') and self.session.booking_slots['phone'] != arg_phone:
+                            if not international:
+                                user_phone_match = re.search(r'\b[6-9]\d{9}\b', curr_u_text)
+                                if user_phone_match:
+                                    new_phone = user_phone_match.group(0)
+                                    if self.session.booking_slots.get('phone') and self.session.booking_slots['phone'] != new_phone:
                                         self.session.booking_slots['old_phone'] = self.session.booking_slots['phone']
-                                    full_args['phone'] = arg_phone
-                                    self.session.booking_slots['phone'] = arg_phone
-                            
-                            user_pin_match = re.search(r'\b[1-9]\d{5}\b', curr_u_text)
-                            if user_pin_match:
-                                new_pin = user_pin_match.group(0)
-                                full_args['pincode'] = new_pin
-                                self.session.booking_slots['pincode'] = new_pin
-                            elif args.get('pincode'):
-                                arg_pin = ''.join(filter(str.isdigit, str(args['pincode'])))
-                                if len(arg_pin) == 6:
-                                    full_args['pincode'] = arg_pin
-                                    self.session.booking_slots['pincode'] = arg_pin
-                            
+                                    full_args['phone'] = new_phone
+                                    self.session.booking_slots['phone'] = new_phone
+                                elif args.get('phone'):
+                                    arg_phone = ''.join(filter(str.isdigit, str(args['phone'])))
+                                    if len(arg_phone) == 10:
+                                        if self.session.booking_slots.get('phone') and self.session.booking_slots['phone'] != arg_phone:
+                                            self.session.booking_slots['old_phone'] = self.session.booking_slots['phone']
+                                        full_args['phone'] = arg_phone
+                                        self.session.booking_slots['phone'] = arg_phone
+
+                                user_pin_match = re.search(r'\b[1-9]\d{5}\b', curr_u_text)
+                                if user_pin_match:
+                                    new_pin = user_pin_match.group(0)
+                                    full_args['pincode'] = new_pin
+                                    self.session.booking_slots['pincode'] = new_pin
+                                elif args.get('pincode'):
+                                    arg_pin = ''.join(filter(str.isdigit, str(args['pincode'])))
+                                    if len(arg_pin) == 6:
+                                        full_args['pincode'] = arg_pin
+                                        self.session.booking_slots['pincode'] = arg_pin
+
                             if not full_args.get('message') and self.session.user_concern:
                                 full_args['message'] = self.session.user_concern
                             # Ensure patient's confirmed residence city is NEVER overwritten by doctor's clinic city
@@ -1140,9 +1517,9 @@ class GeminiClient:
                             # Mandatory fields check before calling submit_consultation_appointment
                             f_fn = bool(full_args.get('first_name') and full_args['first_name'].lower() not in ['', 'none', 'null', 'patient', 'user'])
                             f_city = bool(full_args.get('city') and len(str(full_args['city']).strip()) >= 2 and str(full_args['city']).lower() not in ['none', 'null', 'india', ''])
-                            f_pin = bool(full_args.get('pincode') and len(''.join(filter(str.isdigit, str(full_args['pincode'])))) == 6)
+                            f_pin = booking_pin_ok(full_args.get('pincode'), self.session.booking_slots)
                             f_msg = bool(full_args.get('message') and len(full_args['message'].strip()) >= 2 and full_args['message'].lower() not in ['none', 'null', 'dental consultation appointment request', ''])
-                            f_phone = is_valid_indian_mobile(full_args.get('phone'))
+                            f_phone = booking_phone_ok(full_args.get('phone'), self.session.booking_slots)
 
                             # Already submitted and unchanged (e.g. the patient only ASKED 'is my appointment submitted?'):
                             # the consumed summary used to make this answer 'NOT submitted' and re-recite the summary
@@ -1231,6 +1608,19 @@ class GeminiClient:
                                 "id": func_id,
                                 "response": {"result": result}
                             })
+                        elif func_name == "find_nearest_dentists" and self.session.consultation_declined:
+                            function_responses.append({"name": func_name, "id": func_id, "response": {"result": {
+                                "status": "booking_declined",
+                                "message": "Continue with dental questions until the patient explicitly asks to book again.",
+                            }}})
+                        elif func_name == "find_nearest_dentists" and not self.session.booking_slots.get("country_code"):
+                            function_responses.append({"name": func_name, "id": func_id,
+                                                       "response": {"result": self._ask_country()}})
+                        elif func_name == "find_nearest_dentists" and cu.is_international(self.session.booking_slots):
+                            function_responses.append({"name": func_name, "id": func_id, "response": {"result": {
+                                "status": "not_applicable",
+                                "message": "Continue the international booking at its current step. Use set_patient_location for the postal code or city, and prepare_review_summary after the patient gives their mobile number.",
+                            }}})
                         elif func_name == "find_nearest_dentists":
                             pin_val = str(args.get("pincode") or "").strip()
                             if not pin_val and self.session.booking_slots.get("pincode"):
@@ -1340,6 +1730,7 @@ class GeminiClient:
                                 self.session.city_confirm_turn_id = self.session.current_voice_turn_id
                                 self.session.pending_dentists = None
                                 confirm_text = format_city_confirm_speech(pin_val, display_city, self._voice_lang())
+                                city_caption = (self.session.current_voice_turn_id, confirm_text)
                                 print(f"[INFO] Gemini Live find_nearest_dentists paused for city confirmation: {pin_val} -> {display_city} (canonical: {canonical_city})")
                                 result = {
                                     "status": "need_city_confirmation",
@@ -1369,6 +1760,14 @@ class GeminiClient:
                             result = await self.prepare_review_summary(args)
                             print(f"[INFO] prepare_review_summary -> {result.get('status')} {result.get('missing') or ''}")
                             function_responses.append({"name": func_name, "id": func_id, "response": {"result": result}})
+                        elif func_name == "set_patient_location":
+                            result = await asyncio.to_thread(self.set_patient_location, args)
+                            if result["status"] == "confirm_city":
+                                city_caption = (self.session.current_voice_turn_id, result["say_now"])
+                            print(f"[INFO] set_patient_location {args} -> {result.get('status')}")
+                            function_responses.append({"name": func_name, "id": func_id, "response": {"result": result}})
+                            if result["status"] == "ok":
+                                await self.send_json({"type": "sync_slots", "slots": dict(self.session.booking_slots)})
                         elif func_name == "find_dentists_in_city":
                             result = await asyncio.to_thread(self.find_dentists_in_city, args)
                             print(f"[INFO] find_dentists_in_city {args.get('city')!r} -> {result.get('status')} {[d.get('name') for d in result.get('dentists', [])]}")
@@ -1384,6 +1783,12 @@ class GeminiClient:
                                 "response": {"result": {"status": "error", "message": f"Unknown tool: {func_name}"}}
                             })
                     
+                    for reply in function_responses:
+                        result = reply.get("response", {}).get("result")
+                        if isinstance(result, dict):
+                            script = result.get("say_now") or result.get("say_exactly")
+                            if isinstance(script, str) and script.strip():
+                                booking_script = (self.session.current_voice_turn_id, script.strip())
                     tool_response_message = {
                         "toolResponse": {
                             "functionResponses": function_responses
@@ -1399,6 +1804,11 @@ class GeminiClient:
                     
                 # OFFICIAL GEMINI VAD BARGE-IN / INTERRUPTION HANDLING
                 if server_content.get("interrupted"):
+                    self._track_consultation_offer(self.session.full_bot_reply)
+                    city_caption = None
+                    booking_script = None
+                    muted_turn = None
+                    caption_audio_offset = 0
                     print("[INFO] Gemini Official VAD Interruption / Barge-in Detected!")
                     ios_debug_log(self.session, "srv_interrupted")
                     self.session.is_interrupted = True
@@ -1427,32 +1837,34 @@ class GeminiClient:
                 
                 # NATIVE GEMINI LIVE REAL-TIME TRANSCRIPTIONS (REAL-TIME STREAMING SUBTITLES)
                 if "outputTranscription" in server_content:
+                    self._track_live_decline(allow_short=True)
                     raw_chunk = server_content["outputTranscription"].get("text", "")
                     ios_debug_log(self.session, "srv_said", text=raw_chunk)
                     bot_chunk = re.sub(r"\d{1,2}:\d{2}(:\d{2})?(\.\d+)?\s*-->\s*\d{1,2}:\d{2}(:\d{2})?(\.\d+)?", "", raw_chunk)
                     bot_chunk = re.sub(r"^\s*\d{1,2}:\d{2}(:\d{2})?\s*$", "", bot_chunk)
                     if bot_chunk:
+                        if self._booking_in_progress():
+                            full = self.session.full_bot_reply + bot_chunk
+                            loop = re.search(r"(?:[0૦०][\s,.-]*){16,}|(?:\b(?:zero|શૂન્ય|જીરો|शून्य|जीरो|ज़ीरो)[\s,.-]+){16}", full, re.I)
+                            if loop:
+                                self.session.full_bot_reply = full[:loop.start()].rstrip()
+                                self.session.display_str = self.session.full_bot_reply
+                                bot_chunk = ""
+                                if muted_turn != self.session.current_voice_turn_id:
+                                    muted_turn = self.session.current_voice_turn_id
+                                    self.session.live_pcm_buffer.clear()
+                                    await self.send_json({"type": "stop_booking_audio", "text": self.session.display_str})
+                            elif muted_turn == self.session.current_voice_turn_id:
+                                bot_chunk = ""
+                            elif bot_chunk.strip():
+                                caption_audio_offset = len(self.session.assistant_audio_buffer)
                         self.session.full_bot_reply += bot_chunk
                         self.session.display_str += bot_chunk
                         # The summary card is already on screen; Riya's spoken short version of it is not shown again
                         if getattr(self.session, "pending_summary_card", ""):
                             bot_chunk = ""
                         
-                        # Update conversation language based on the bot's tag
-                        lang_match = re.search(r"\[(hi|bn|ta|te|mr|gu|kn|ml|pa|or|en)-IN\]", self.session.full_bot_reply, re.IGNORECASE)
-                        if lang_match:
-                            bot_tag_lang = f"{lang_match.group(1).lower()}-IN"
-                            if bot_tag_lang != "en-IN" or getattr(self.session, 'has_user_spoken', False):
-                                self.session.current_language = bot_tag_lang
-                                self.session.is_language_established = True
-                        elif getattr(self, 'conversation_manager', None):
-                            from voice_agent.ai.conversation_manager import detect_user_language
-                            detected_bot_lang = detect_user_language(self.session.full_bot_reply)
-                            if detected_bot_lang and detected_bot_lang != "en":
-                                self.session.current_language = f"{detected_bot_lang}-IN"
-                                self.session.is_language_established = True
-                            
-                        if bot_chunk:
+                        if bot_chunk and not self._hold_audio_until_country_check():
                             best_tag = detect_best_tag(self.session.latest_typed_user_text, self.session.display_str)
                             await self.send_json({
                                 "type": "bot_text_chunk",
@@ -1466,12 +1878,9 @@ class GeminiClient:
                     ios_debug_log(self.session, "srv_heard", text=raw_user_chunk)
                     user_chunk = clean_hallucinations(raw_user_chunk)
                     if user_chunk:
-                        self.session.full_bot_reply = ""
-                        self.session.display_str = ""
                         self.session.current_user_transcription += user_chunk
+                        self._track_live_decline()
                         self.session.has_user_spoken = True
-                        # Slots are parsed once at turnComplete on the full utterance. Parsing every partial chunk
-                        # turned half-spoken phone digits into fake pincodes and set stale invalid-input flags.
                         await self.send_json({
                             "type": "user_text_chunk",
                             "text": user_chunk,
@@ -1491,6 +1900,9 @@ class GeminiClient:
                             fc = part["functionCall"]
                             func_name = fc.get("name")
                             args = fc.get("args", {})
+                            if (func_name == "submit_appointment_booking" and self.session.consultation_declined
+                                    and not self.session.booking_slots.get("is_submitted")):
+                                continue
                             if func_name == "submit_appointment_booking":
                                 # ⚡ The last VALID review summary the patient heard is the source of truth ⚡
                                 sum_slots = dict(getattr(self.session, "last_review_summary_slots", {}) or {})
@@ -1519,7 +1931,10 @@ class GeminiClient:
                                                 full_args[k] = v
                                 
                                 # 2. Update with args from tool call
+                                international = cu.is_international(self.session.booking_slots)
                                 for k, v in args.items():
+                                    if international and k in ("country", "country_code", "pincode", "city", "phone", "doctor_name"):
+                                        continue
                                     if v and str(v).lower() not in ['none', 'null', '-', '--']:
                                         full_args[k] = v
                                         self.session.booking_slots[k] = v
@@ -1528,34 +1943,35 @@ class GeminiClient:
                                 curr_u_text = str(getattr(self.session, 'current_user_transcription', '') or getattr(self.session, 'latest_typed_user_text', '') or '')
                                 curr_u_lower = curr_u_text.lower().strip()
                                 
-                                user_phone_match = re.search(r'\b[6-9]\d{9}\b', curr_u_text)
-                                if user_phone_match:
-                                    new_phone = user_phone_match.group(0)
-                                    if self.session.booking_slots.get('phone') and self.session.booking_slots['phone'] != new_phone:
-                                        self.session.booking_slots['old_phone'] = self.session.booking_slots['phone']
-                                    full_args['phone'] = new_phone
-                                    self.session.booking_slots['phone'] = new_phone
-                                elif args.get('phone'):
-                                    arg_phone = ''.join(filter(str.isdigit, str(args['phone'])))
-                                    if len(arg_phone) == 10:
-                                        if self.session.booking_slots.get('phone') and self.session.booking_slots['phone'] != arg_phone:
+                                if not international:
+                                    user_phone_match = re.search(r'\b[6-9]\d{9}\b', curr_u_text)
+                                    if user_phone_match:
+                                        new_phone = user_phone_match.group(0)
+                                        if self.session.booking_slots.get('phone') and self.session.booking_slots['phone'] != new_phone:
                                             self.session.booking_slots['old_phone'] = self.session.booking_slots['phone']
-                                        full_args['phone'] = arg_phone
-                                        self.session.booking_slots['phone'] = arg_phone
-                                
-                                user_pin_match = re.search(r'\b[1-9]\d{5}\b', curr_u_text)
-                                if user_pin_match:
-                                    new_pin = user_pin_match.group(0)
-                                    full_args['pincode'] = new_pin
-                                    self.session.booking_slots['pincode'] = new_pin
-                                elif args.get('pincode'):
-                                    arg_pin = ''.join(filter(str.isdigit, str(args['pincode'])))
-                                    if len(arg_pin) == 6:
-                                        full_args['pincode'] = arg_pin
-                                        self.session.booking_slots['pincode'] = arg_pin
-                                
-                                if not full_args.get('message') and self.session.user_concern:
-                                    full_args['message'] = self.session.user_concern
+                                        full_args['phone'] = new_phone
+                                        self.session.booking_slots['phone'] = new_phone
+                                    elif args.get('phone'):
+                                        arg_phone = ''.join(filter(str.isdigit, str(args['phone'])))
+                                        if len(arg_phone) == 10:
+                                            if self.session.booking_slots.get('phone') and self.session.booking_slots['phone'] != arg_phone:
+                                                self.session.booking_slots['old_phone'] = self.session.booking_slots['phone']
+                                            full_args['phone'] = arg_phone
+                                            self.session.booking_slots['phone'] = arg_phone
+
+                                    user_pin_match = re.search(r'\b[1-9]\d{5}\b', curr_u_text)
+                                    if user_pin_match:
+                                        new_pin = user_pin_match.group(0)
+                                        full_args['pincode'] = new_pin
+                                        self.session.booking_slots['pincode'] = new_pin
+                                    elif args.get('pincode'):
+                                        arg_pin = ''.join(filter(str.isdigit, str(args['pincode'])))
+                                        if len(arg_pin) == 6:
+                                            full_args['pincode'] = arg_pin
+                                            self.session.booking_slots['pincode'] = arg_pin
+
+                                    if not full_args.get('message') and self.session.user_concern:
+                                        full_args['message'] = self.session.user_concern
                                 # Ensure patient's confirmed residence city is NEVER overwritten by doctor's clinic city
                                 if self.session.booking_slots.get('city') and getattr(self.session, 'city_manually_confirmed', False):
                                     full_args['city'] = self.session.booking_slots['city']
@@ -1616,9 +2032,9 @@ class GeminiClient:
                                 # Mandatory fields check before calling submit_consultation_appointment
                                 f_fn = bool(full_args.get('first_name') and full_args['first_name'].lower() not in ['', 'none', 'null', 'patient', 'user'])
                                 f_city = bool(full_args.get('city') and len(str(full_args['city']).strip()) >= 2 and str(full_args['city']).lower() not in ['none', 'null', 'india', ''])
-                                f_pin = bool(full_args.get('pincode') and len(''.join(filter(str.isdigit, str(full_args['pincode'])))) == 6)
+                                f_pin = booking_pin_ok(full_args.get('pincode'), self.session.booking_slots)
                                 f_msg = bool(full_args.get('message') and len(full_args['message'].strip()) >= 2 and full_args['message'].lower() not in ['none', 'null', 'dental consultation appointment request', ''])
-                                f_phone = is_valid_indian_mobile(full_args.get('phone'))
+                                f_phone = booking_phone_ok(full_args.get('phone'), self.session.booking_slots)
 
                                 # Already submitted and unchanged (e.g. the patient only ASKED 'is my appointment submitted?'):
                                 # the consumed summary used to make this answer 'NOT submitted' and re-recite the summary
@@ -1692,7 +2108,8 @@ class GeminiClient:
                                         "slots": self.session.booking_slots
                                     })
                                 print(f"[INFO] Gemini Live modelTurn part invoked submit_appointment_booking with args: {full_args}, result: {res}")
-                            elif func_name == "find_nearest_dentists":
+                            elif (func_name == "find_nearest_dentists" and self.session.booking_slots.get("country_code") == "IN"
+                                  and not self.session.consultation_declined):
                                 pin_val = re.sub(r"\D", "", self._ascii_digits(str(args.get("pincode") or "")))
                                 if not pin_val and self.session.booking_slots.get("pincode"):
                                     pin_val = self.session.booking_slots.get("pincode")
@@ -1763,7 +2180,7 @@ class GeminiClient:
                             if bot_chunk and bot_chunk not in self.session.full_bot_reply:
                                 self.session.full_bot_reply += bot_chunk
                                 self.session.display_str += bot_chunk
-                                if not getattr(self.session, "pending_summary_card", ""):
+                                if not getattr(self.session, "pending_summary_card", "") and not self._hold_audio_until_country_check():
                                     best_tag = detect_best_tag(self.session.latest_typed_user_text, self.session.display_str)
                                     await self.send_json({
                                         "type": "bot_text_chunk",
@@ -1773,50 +2190,62 @@ class GeminiClient:
                                     })
 
                         if "inlineData" in part:
+                            self._track_live_decline(allow_short=True)
+                            if muted_turn == self.session.current_voice_turn_id:
+                                continue
                             incoming_pcm = base64.b64decode(part["inlineData"]["data"])
+                            if self._booking_in_progress():
+                                # Native captions can finish ahead of the sound. Allow time for the whole
+                                # script, and stop a runaway audio tail even if the captions look normal.
+                                script = booking_script[1] if booking_script and booking_script[0] == self.session.current_voice_turn_id else ""
+                                words = max(len(script.split()), len(self.session.full_bot_reply.split()))
+                                audio_end = len(self.session.assistant_audio_buffer) + len(incoming_pcm)
+                                if words and audio_end > max(caption_audio_offset + 35 * 48000, (15 + 2 * words) * 48000):
+                                    muted_turn = self.session.current_voice_turn_id
+                                    self.session.live_pcm_buffer.clear()
+                                    await self.send_json({"type": "stop_booking_audio", "text": self.session.display_str})
+                                    continue
                             self.session.live_pcm_buffer.extend(incoming_pcm)
                             self.session.assistant_audio_buffer.extend(incoming_pcm)
                             
                         # Stream audio chunks with smooth buffer alignment (9600 bytes = 200ms of 24kHz 16-bit PCM)
-                        if len(self.session.live_pcm_buffer) >= 9600:
-                            send_len = len(self.session.live_pcm_buffer) - (len(self.session.live_pcm_buffer) % 2)
-                            send_bytes = self.session.live_pcm_buffer[:send_len]
-                            self.session.live_pcm_buffer = self.session.live_pcm_buffer[send_len:]
-                            wav_base64 = wrap_pcm_to_wav_base64(send_bytes, 24000)
-                            await self.send_json({
-                                "type": "audio_chunk",
-                                "audioBase64": wav_base64,
-                                "index": self.session.chunk_index
-                            })
-                            ios_debug_log(self.session, "srv_audio_out", i=self.session.chunk_index, ms=send_len // 48)
-                            self.session.chunk_index += 1
+                        if len(self.session.live_pcm_buffer) >= 9600 and not self._hold_audio_until_country_check():
+                            await self._flush_live_audio()
                 
                 is_turn_finished = server_content.get("turnComplete") or server_content.get("generationComplete")
+                if (server_content.get("generationComplete") and not server_content.get("turnComplete")
+                        and self._booking_in_progress()
+                        and len(self.session.full_bot_reply.split()) <= 3):
+                    # A short opening caption can be followed by more output before turnComplete.
+                    continue
                 if is_turn_finished:
-                    if len(self.session.assistant_audio_buffer) == 0 and not self.session.full_bot_reply and not len(self.session.live_pcm_buffer):
+                    if (not self.session.assistant_audio_buffer and not self.session.full_bot_reply
+                            and not self.session.live_pcm_buffer and not getattr(self.session, "awaiting_correction_reply", False)):
+                        muted_turn = None
+                        booking_script = None
+                        caption_audio_offset = 0
                         continue
                     await self.send_json({"type": "user_speaking_status", "is_speaking": False})
                     ios_debug_log(self.session, "srv_turn_complete")
-                    if len(self.session.live_pcm_buffer) > 0:
-                        send_len = len(self.session.live_pcm_buffer) - (len(self.session.live_pcm_buffer) % 2)
-                        if send_len > 0:
-                            send_bytes = self.session.live_pcm_buffer[:send_len]
-                            self.session.live_pcm_buffer = bytearray()
-                            wav_base64 = wrap_pcm_to_wav_base64(send_bytes, 24000)
-                            await self.send_json({
-                                "type": "audio_chunk",
-                                "audioBase64": wav_base64,
-                                "index": self.session.chunk_index
-                            })
-                            ios_debug_log(self.session, "srv_audio_out", i=self.session.chunk_index, ms=send_len // 48, last=True)
-                            self.session.chunk_index += 1
+                    country_question = ""
+                    spoken_reply = self.session.full_bot_reply.strip()
+                    if (not self.session.consultation_declined and not self.session.booking_slots.get("country_code")
+                            and any(word in spoken_reply.casefold() for word in self.PINCODE_WORDS)):
+                        country_question = self._ask_country()["say_now"]
+                        self.session.full_bot_reply = country_question
+                        self.session.live_pcm_buffer.clear()
+                        self.session.assistant_audio_buffer.clear()
+                    else:
+                        self._track_consultation_offer(spoken_reply)
+                    await self._flush_live_audio()
+                    self.session.live_pcm_buffer.clear()
                     
                     current_assistant_audio = bytes(self.session.assistant_audio_buffer)
                     self.session.assistant_audio_buffer = bytearray()
                     
-                    # Resolve user transcription with fallback
-                    user_text = ""
-                    if self.session.user_transcription_task:
+                    voice_transcript_turn = None if self.session.latest_typed_user_text else self.session.current_voice_turn_id
+                    user_text = self.session.latest_typed_user_text or ""
+                    if not user_text and self.session.user_transcription_task:
                         try:
                             user_text = await asyncio.wait_for(asyncio.shield(self.session.user_transcription_task), timeout=0.6)
                         except Exception:
@@ -1826,7 +2255,7 @@ class GeminiClient:
                                 except Exception:
                                     pass
                     if not user_text:
-                        user_text = self.session.current_user_transcription or self.session.latest_typed_user_text or ""
+                        user_text = self.session.current_user_transcription or ""
                     # Frontend control prompts (greeting / reconnect / silence nudge) are not the patient's words.
                     # Treating them as speech made the reconnect message ("...appointment is already submitted")
                     # count as "submit" and re-submit (even un-cancel) the previous booking.
@@ -1860,16 +2289,33 @@ class GeminiClient:
                         # Worker thread: slot parsing can hit the postal/dentist APIs (blocking requests), which
                         # otherwise froze the event loop - and every caller's audio - for up to a second or more
                         if user_text and user_text != "Message":
-                            await asyncio.to_thread(self.conversation_manager.update_session_memory, user_text, self.session.latest_client_history)
+                            await asyncio.to_thread(
+                                self.conversation_manager.update_session_memory, user_text, self.session.latest_client_history,
+                                voice_transcript_turn=voice_transcript_turn,
+                            )
                         if clean_text:
                             temp_h = list(self.session.latest_client_history or []) + [{"role": "model", "parts": [{"text": clean_text}]}]
-                            await asyncio.to_thread(self.conversation_manager.update_session_memory, "", temp_h)
+                            await asyncio.to_thread(
+                                self.conversation_manager.update_session_memory, "", temp_h,
+                                voice_transcript_turn=voice_transcript_turn,
+                            )
+                            if (not self.session.booking_slots.get("country_code")
+                                    and self.conversation_manager._COUNTRY_ASK_RE.search(clean_text)):
+                                self.session.asking_for_field = "country"
                     # Gemini spoke the dentist list prepared at the city confirmation -> lock city, record dentists
                     self.sync_pending_dentists_after_turn(clean_text)
                     self.track_pincode_request(clean_text)
 
-                    # 🚨 Check if user requested an edit/change after initial submission
-                    curr_u_l = (user_text or "").lower().strip()
+                    field = self.session.asking_for_field
+                    audio_contact_turn = voice_transcript_turn is not None and (
+                        field in ("country", "intl_postal", "intl_city", "intl_city_confirm")
+                        or self.session.intl_location_handled_turn == voice_transcript_turn
+                        or (cu.is_international(self.session.booking_slots)
+                            and (field == "phone" or getattr(self.session, "review_prepared_turn", None) == voice_transcript_turn))
+                    )
+
+                    # A contact answer cannot also authorize a submission or edit through its caption.
+                    curr_u_l = "" if audio_contact_turn else (user_text or "").lower().strip()
                     user_is_editing = any(ew in curr_u_l for ew in [
                         'change', 'update', 'edit', 'instead', 'no my', 'no, my', 'spelling', 'mistake',
                         'wrong', 'incorrect', 'ખોટું', 'ખોટો', 'ખોટી', 'ખોટા', 'ખોટો છે', 'ખોટી છે', 'ખોટું છે',
@@ -1881,28 +2327,40 @@ class GeminiClient:
                         self.session.booking_slots["is_submitted"] = False
                         self.session.slots_edited_after_submit = True
 
-                    # 🌐 Language follows what Gemini actually heard: its reply is in the patient's language, while the
-                    # transcript of unclear audio is not (a Hindi speaker's garbled transcript was detected as Punjabi)
-                    from voice_agent.ai.conversation_manager import detect_user_language
-                    reply_lang = detect_user_language(clean_text, None, None) if clean_text else None
-                    if reply_lang:
-                        self.session.current_language = f"{reply_lang}-IN"
-                        self.session.is_language_established = True
-                    turn_lang = reply_lang or str(getattr(self.session, "current_language", "") or "en-IN").split("-")[0]
+                    turn_lang = self._voice_lang().split("-")[0]
 
                     # A turn that answers our own correction note must not trigger another note (no correction loops)
                     is_correction_reply = getattr(self.session, "awaiting_correction_reply", False)
                     self.session.awaiting_correction_reply = False
                     correction_note = None
+                    if (not is_correction_reply and self.session.pending_intl_city
+                            and voice_transcript_turn is not None
+                            and self.session.intl_location_handled_turn != voice_transcript_turn):
+                        slots = self.session.booking_slots
+                        confirmation = cu.intl_text(
+                            "confirm_city", turn_lang, slots["country_code"],
+                            postal=slots["pincode"], city=self.session.pending_intl_city,
+                        ).rstrip("?").casefold()
+                        asked_phone = LIVE_PHONE_QUESTION.search(clean_text)
+                        if asked_phone or confirmation in clean_text.casefold():
+                            next_reply = (
+                                "If the tool saves the city, wait for the mobile number you already asked for."
+                                if asked_phone else "If the tool saves the city, ask for the mobile number using its 'say_now'."
+                            )
+                            correction_note = (
+                                "[BACKEND NOTE - do not read aloud.] The city is still pending on the server. "
+                                + LIVE_CITY_CONFIRMATION + " Use the patient's preceding live audio answer. "
+                                + next_reply + " If you are unsure, ask the tool for the city question."
+                            )
 
                     # Template placeholders spoken as if real ("Dr. [Name 1], Dr. [Name 2]"): make Riya fetch the real dentists
-                    if not is_correction_reply and re.search(r"\[(?:name|doctor|નામ|नाम)\s*\d", clean_text or "", re.IGNORECASE):
+                    if not is_correction_reply and not cu.is_international(self.session.booking_slots) and re.search(r"\[(?:name|doctor|નામ|नाम)\s*\d", clean_text or "", re.IGNORECASE):
                         pin_for_lookup = self.session.booking_slots.get("pincode") or getattr(self.session, "pending_pincode", "") or ""
                         correction_note = (
                             "[BACKEND NOTE - not spoken by the patient. Do not read this note aloud.] You just said placeholder "
                             "doctor names like '[Name 1]' instead of real names. Briefly apologise, call find_nearest_dentists"
                             f"{' with pincode ' + pin_for_lookup if pin_for_lookup else ''} now, and speak ONLY the real doctor names it "
-                            "returns. If it returns none, say we will have our team guide them. Same language as your previous reply."
+                            "returns. If it returns none, say we will have our team guide them."
                         )
 
                     # ⚡ Review summary = the single source of truth for submission ⚡
@@ -1920,6 +2378,9 @@ class GeminiClient:
                     if is_review_summary and prepared_now:
                         # Checked by prepare_review_summary before Riya spoke it; the transcript of her speech may differ
                         summary_slots = dict(self.session.last_review_summary_slots)
+                    elif is_review_summary and cu.is_international(self.session.booking_slots):
+                        summary_problem = "international_review"
+                        summary_slots = {}
                     elif is_review_summary:
                         merged_for_check = {
                             "user_name": self.session.user_name,
@@ -1929,7 +2390,7 @@ class GeminiClient:
                         }
                         summary_problem = get_review_summary_problem(merged_for_check)
                         # Phone must be one the patient actually said: Riya invents a number when she did not hear it clearly
-                        if not summary_problem:
+                        if not summary_problem and not cu.is_international(self.session.booking_slots):
                             sum_phone = normalize_mobile(merged_for_check.get("phone")) or ""
                             said = [text for role, text in self.session.transcript_history if role == "user"] + [user_text or ""]
                             said_digits = ["".join(filter(str.isdigit, self._ascii_digits(s))) for s in said]
@@ -1952,13 +2413,13 @@ class GeminiClient:
                         # City must belong to the pincode (a summary said "Surat" with Rajkot's 360001)
                         sum_pin = "".join(filter(str.isdigit, str(merged_for_check.get("pincode") or "")))
                         sum_city = str(merged_for_check.get("city") or "").strip().lower()
-                        if not summary_problem and len(sum_pin) == 6 and sum_city:
+                        if not summary_problem and len(sum_pin) == 6 and sum_city and not cu.is_international(self.session.booking_slots):
                             from voice_agent.services.dentist_service import get_pincode_canonical_city
                             pin_city = await asyncio.to_thread(get_pincode_canonical_city, sum_pin)
                             if pin_city and pin_city.lower() not in sum_city and sum_city not in pin_city.lower():
                                 summary_problem = "city_mismatch"
                                 bad_summary_phone = f"{sum_pin}|{pin_city}"
-                    if summary_slots.get("phone") and not is_valid_indian_mobile(summary_slots["phone"]):
+                    if summary_slots.get("phone") and not booking_phone_ok(summary_slots["phone"], self.session.booking_slots):
                         # An invalid or placeholder phone never reaches the booking slots
                         bad_summary_phone = summary_slots.pop("phone")
                     if is_review_summary:
@@ -1972,7 +2433,10 @@ class GeminiClient:
                             if summary_problem == "phone_mismatch":
                                 self.session.booking_slots["phone"] = bad_summary_phone.partition("|")[2]
                                 summary_slots.pop("phone", None)  # the wrong spoken number never reaches the slots
-                            correction_note = build_summary_correction_note(summary_problem, bad_summary_phone)
+                            if summary_problem == "international_review":
+                                correction_note = "[BACKEND NOTE - do not speak this note.] Call prepare_review_summary and speak only the text it returns."
+                            else:
+                                correction_note = build_summary_correction_note(summary_problem, bad_summary_phone)
                             print(f"[SUMMARY-INVALID] Review summary rejected ({summary_problem}); asking Gemini to correct it.")
                         else:
                             self.session.last_review_summary_slots = dict(summary_slots)
@@ -1982,12 +2446,12 @@ class GeminiClient:
 
                         # Canonical city integrity: ensure city slot is strictly the canonical city (e.g. Surat, never Sayan)
                         active_pin = summary_slots.get("pincode") or self.session.booking_slots.get("pincode")
-                        if active_pin:
+                        if active_pin and not cu.is_international(self.session.booking_slots):
                             from voice_agent.services.dentist_service import get_pincode_canonical_city
                             c_pin = await asyncio.to_thread(get_pincode_canonical_city, active_pin)
                             if c_pin:
                                 summary_slots["city"] = c_pin
-                        elif summary_slots.get("city") and "," in str(summary_slots["city"]):
+                        elif not cu.is_international(self.session.booking_slots) and summary_slots.get("city") and "," in str(summary_slots["city"]):
                             summary_slots["city"] = str(summary_slots["city"]).split(",")[-1].strip()
 
                         for k, v in summary_slots.items():
@@ -2034,6 +2498,8 @@ class GeminiClient:
                         p_pin = getattr(self.session, "pending_pincode", "") or self.session.booking_slots.get("pincode", "")
                         p_cit = getattr(self.session, "pending_display_city", "") or getattr(self.session, "pending_city", "") or self.session.booking_slots.get("city", "")
                         intercepted_msg = format_city_confirm_speech(p_pin, p_cit, user_lang)
+                        if p_pin and p_cit and (not city_caption or city_caption[0] != self.session.current_voice_turn_id):
+                            city_caption = (self.session.current_voice_turn_id, intercepted_msg)
                         self.session.asking_for_field = "city_confirmation"
                         if not clean_text or clean_text == "...":
                             clean_text = intercepted_msg
@@ -2079,7 +2545,9 @@ class GeminiClient:
                     clean_reply_lower = (clean_text or "").lower()
                     # Submit/cancel only ever happens in reply to something the patient actually said, and an
                     # already-cancelled booking is not cancelled again every time Riya mentions the cancellation
-                    real_user_turn = bool(user_text.strip())
+                    real_user_turn = bool(user_text.strip()) and not audio_contact_turn and not (
+                        self.session.consultation_declined and not self.session.booking_slots.get("is_submitted")
+                    )
                     # Explicit "re-submit / submit again" may reuse the last submitted summary (a plain "yes" may not).
                     # Edits produce a fresh summary anyway, which the patient then confirms with "submit".
                     if real_user_turn and not self.session.last_review_summary_slots and getattr(self.session, "last_consumed_summary_slots", None) \
@@ -2114,7 +2582,7 @@ class GeminiClient:
                     has_fn = bool(_bs.get("first_name") and str(_bs["first_name"]).lower() not in ["", "none", "null", "patient", "user"])
                     has_city = bool(_bs.get("city") and len(str(_bs["city"]).strip()) >= 2 and str(_bs["city"]).lower() not in ["none", "null", "india", ""])
                     has_msg = bool((_bs.get("message") or self.session.user_concern or "").strip())
-                    has_pin = len("".join(filter(str.isdigit, str(_bs.get("pincode") or "")))) == 6
+                    has_pin = booking_pin_ok(_bs.get("pincode"), _bs)
 
                     submitted_this_turn = False
                     if should_submit:
@@ -2154,8 +2622,8 @@ class GeminiClient:
                         has_fn = bool(slots_to_send.get("first_name") and slots_to_send["first_name"].lower() not in ["", "none", "null", "patient", "user"])
                         has_city = bool(slots_to_send.get("city") and len(str(slots_to_send["city"]).strip()) >= 2 and str(slots_to_send["city"]).lower() not in ["none", "null", "india", ""])
                         has_msg = bool(slots_to_send.get("message") and len(slots_to_send["message"].strip()) >= 2)
-                        has_pin = bool(slots_to_send.get("pincode") and len("".join(filter(str.isdigit, str(slots_to_send["pincode"])))) == 6)
-                        has_phone = is_valid_indian_mobile(slots_to_send.get("phone"))
+                        has_pin = booking_pin_ok(slots_to_send.get("pincode"), self.session.booking_slots)
+                        has_phone = booking_phone_ok(slots_to_send.get("phone"), self.session.booking_slots)
 
                         if is_cancel_req or (confirmed_slots and has_fn and has_city and has_pin and has_msg and has_phone):
                             sub_id = self.session.booking_slots.get("submission_id") or getattr(self.session, "submitted_lead_id", None)
@@ -2255,11 +2723,25 @@ class GeminiClient:
                         # is neither shown again nor saved twice in the transcript
                         summary_card = getattr(self.session, "pending_summary_card", "") or ""
                         self.session.pending_summary_card = ""
-                        shown_text = "" if summary_card else (clean_text or "...")
+                        # Both tools already provide the exact spoken city question.
+                        # Use it to finalize the caption even if Live sends only its first word.
+                        caption = city_caption[1] if city_caption and city_caption[0] == self.session.current_voice_turn_id else clean_text
+                        caption_id = None
+                        if not (city_caption or summary_card or country_question) and self._booking_in_progress():
+                            script = booking_script[1] if booking_script and booking_script[0] == self.session.current_voice_turn_id else ""
+                            prefix = caption.strip().casefold().rstrip(".!?।…")
+                            if script and script.casefold().startswith(prefix) and len(script) > len(caption):
+                                caption = script
+                            elif (caption.strip() and muted_turn is None and len(caption.split()) <= 3
+                                  and len(current_assistant_audio) > max(3, 2 * len(caption.split())) * 48000):
+                                caption_id = uuid4().hex
+                        shown_text = "" if summary_card else (caption or "...")
 
                         await self.send_json({
                             "type": "bot_spoken_text",
                             "text": shown_text or "...",
+                            **({"replaceProvisional": True} if country_question else {}),
+                            **({"captionId": caption_id} if caption_id else {}),
                             "tag": final_tag,
                             "turnId": self.session.current_voice_turn_id
                         })
@@ -2268,13 +2750,14 @@ class GeminiClient:
                             self.session.add_transcript_turn("user", user_text)
                         if summary_card:
                             self.session.add_transcript_turn("model", summary_card)
-                        elif clean_text and clean_text != "...":
-                            self.session.add_transcript_turn("model", clean_text)
-                        log_live_voice_conversation(user_text, summary_card or clean_text or "...", dict(self.session.booking_slots))
+                        elif caption and caption != "...":
+                            self.session.add_transcript_turn("model", caption)
+                        log_live_voice_conversation(user_text, summary_card or caption or "...", dict(self.session.booking_slots))
                         await self.send_json({
                             "type": "reply_complete",
                             "userText": user_text,
                             "botText": shown_text,
+                            **({"captionId": caption_id} if caption_id else {}),
                             "tag": final_tag,
                             "totalChunks": self.session.chunk_index,
                             "slots": dict(self.session.booking_slots),
@@ -2282,11 +2765,16 @@ class GeminiClient:
                             "userConcern": self.session.user_concern,
                             "userCity": self.session.booking_slots.get("city"),
                             "userDoctor": self.session.booking_slots.get("doctor_name"),
-                            "userPhone": self.session.booking_slots.get("phone")
+                            "userPhone": self.session.booking_slots.get("phone"),
+                            **({"resumeSpeech": country_question} if country_question else {}),
                         })
                         
                         # Background Bot STT transcription only if we did not get native transcription and have audio
-                        if not self.session.full_bot_reply and len(current_assistant_audio) > 0:
+                        if caption_id and self.session.transcript_history and self.session.transcript_history[-1] == ("model", caption.strip()):
+                            history = self.session.transcript_history
+                            asyncio.create_task(self._repair_booking_caption(current_assistant_audio, self._voice_lang(),
+                                                                             history[-1], len(history) - 1, caption_id))
+                        elif not caption and not self.session.full_bot_reply and len(current_assistant_audio) > 0:
                             asyncio.create_task(self.transcribe_bot_audio(current_assistant_audio))
                             
                     else:
@@ -2299,6 +2787,10 @@ class GeminiClient:
                     self.session.current_user_transcription = ""
                     self.session.latest_typed_user_text = ""
                     self.session.current_voice_turn_id += 1
+                    city_caption = None
+                    booking_script = None
+                    muted_turn = None
+                    caption_audio_offset = 0
                     self.session.reset_activity_timer()
                     self.session.latest_client_history = []
                     self.session.clear_voice_intercept_flags()

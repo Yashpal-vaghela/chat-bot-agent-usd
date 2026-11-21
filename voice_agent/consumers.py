@@ -17,6 +17,11 @@ from voice_agent.views import dispatch_feedback_email
 from voice_agent.utils.ios_debug import ios_debug_log
 
 class VoiceAgentConsumer(AsyncJsonWebsocketConsumer):
+    async def send_json(self, content, close=False):
+        if content.get("type") in ("sync_slots", "reply_complete") and "slots" in content:
+            content = {**content, "booking_resume": self.session.booking_resume_context()}
+        await super().send_json(content, close=close)
+
     async def connect(self):
         self.session = Session()
 

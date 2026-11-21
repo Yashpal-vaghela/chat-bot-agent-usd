@@ -168,7 +168,7 @@ def is_duplicate_submission(phone: str, doctor_name: str) -> bool:
     for k in expired:
         _RECENT_SUBMISSIONS_CACHE.pop(k, None)
         
-    key = (str(phone).strip()[-10:], str(doctor_name).lower().strip())
+    key = ("".join(filter(str.isdigit, str(phone))), str(doctor_name).lower().strip())
     if key in _RECENT_SUBMISSIONS_CACHE and (now - _RECENT_SUBMISSIONS_CACHE[key]) < 30:
         return True
     _RECENT_SUBMISSIONS_CACHE[key] = now
@@ -265,6 +265,7 @@ def fetch_existing_lead_data(sub_id, phone_val):
             "last_name": lead.last_name,
             "city": lead.city,
             "pincode": getattr(lead, "pincode", "") or "",
+            "country_code": getattr(lead, "country_code", "") or "IN",
             "doctor_name": lead.doctor_name,
             "message": lead.message,
             "email": lead.email,
@@ -303,7 +304,7 @@ def save_lead_to_local_db(payload: dict):
 
     city_val = str(payload.get('city') or '').strip()
     pin_val = str(payload.get('pincode') or '').strip()
-    if pin_val:
+    if pin_val and str(payload.get('country_code') or 'IN').upper() == 'IN':
         try:
             from voice_agent.services.dentist_service import get_pincode_canonical_city
             canon_c = get_pincode_canonical_city(pin_val)
@@ -331,6 +332,9 @@ def save_lead_to_local_db(payload: dict):
             lead.city = city_val
         if hasattr(lead, 'pincode') and pin_val:
             lead.pincode = pin_val
+        if hasattr(lead, 'country_code') and payload.get('country_code'):
+            lead.country = payload.get('country') or lead.country
+            lead.country_code = payload.get('country_code')
         if payload.get('message'):
             lead.message = payload.get('message')
         if payload.get('email') and payload.get('email') not in ['no-reply@ultimatesmiledesign.com', '--', '-']:
@@ -352,6 +356,9 @@ def save_lead_to_local_db(payload: dict):
     }
     if hasattr(UserSubmission, 'pincode'):
         create_kwargs['pincode'] = pin_val
+    if hasattr(UserSubmission, 'country_code'):
+        create_kwargs['country'] = payload.get('country') or 'India'
+        create_kwargs['country_code'] = payload.get('country_code') or 'IN'
     lead = UserSubmission.objects.create(**create_kwargs)
     print(f"[SUCCESS] Saved directly to local UserSubmission table! (ID: {lead.id}, City: {lead.city}, Pincode: {getattr(lead, 'pincode', '-')}, Name: {lead.first_name} {lead.last_name}, is_cancel={lead.is_cancel})")
     return lead.id
@@ -365,7 +372,9 @@ def sync_lead_to_godaddy_sqlite(payload: dict) -> int:
             "Content-Type": "application/json",
             "X-Internal-Secret": INTERNAL_SYNC_SECRET
         }
-        phone_digits = "".join(filter(str.isdigit, str(payload.get("phone", ""))))[-10:]
+        phone_raw = str(payload.get("phone", "")).strip()
+        # Indian numbers stay 10 digits; international ones keep their '+<dial code>' (never cut to the last 10)
+        phone_digits = phone_raw if phone_raw.startswith("+") else "".join(filter(str.isdigit, phone_raw))[-10:]
         sync_payload = {
             "first_name": payload.get("first_name", ""),
             "last_name": payload.get("last_name", "-"),
@@ -373,6 +382,8 @@ def sync_lead_to_godaddy_sqlite(payload: dict) -> int:
             "email": payload.get("email") or "no-reply@ultimatesmiledesign.com",
             "city": payload.get("city", ""),
             "pincode": payload.get("pincode", ""),
+            "country": payload.get("country", "India"),
+            "country_code": payload.get("country_code", "IN"),
             "message": payload.get("message", ""),
             "doctor_name": payload.get("doctor_name", ""),
             "is_cancel": bool(payload.get("is_cancel", False)),
@@ -416,13 +427,21 @@ _LOCAL_API_LEAD_MAP = _API_LEAD_MAP
 
 def sync_lead_to_api_endpoint(payload: dict) -> int:
     """Dispatches consultation appointment lead directly to the consultation API endpoint."""
+    from voice_agent.utils.country_utils import format_phone_for_display
+
     try:
         api_url = os.getenv("CONSULT_API_ENDPOINT") or os.getenv("LOCAL_API_ENDPOINT") or "https://ultimatesmiledesign.com/api/consult-with-dentist/"
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
-        phone_digits = "".join(filter(str.isdigit, str(payload.get("phone", ""))))[-10:]
+        phone_raw = str(payload.get("phone", "")).strip()
+        # This endpoint supplies the external lead list. Local records keep the compact number.
+        if phone_raw.startswith("+"):
+            api_phone = format_phone_for_display(phone_raw)
+        else:
+            national = "".join(filter(str.isdigit, phone_raw))[-10:]
+            api_phone = format_phone_for_display(national, payload.get("country_code") or "IN")
         is_cancel = bool(payload.get("is_cancel", False))
         is_update = bool(payload.get("is_update", False))
 
@@ -445,11 +464,13 @@ def sync_lead_to_api_endpoint(payload: dict) -> int:
             "first_name": payload.get("first_name", "") or "",
             "last_name": payload.get("last_name", "-") or "-",
             "email": payload.get("email") or "no-reply@ultimatesmiledesign.com",
-            "phone": phone_digits if phone_digits else str(payload.get("phone", "")),
+            "phone": api_phone or str(payload.get("phone", "")),
             "city": payload.get("city", "") or "",
             "pincode": pincode_val,
             "pin_code": pincode_val,
             "postal_code": pincode_val,
+            "country": payload.get("country") or "India",
+            "country_code": payload.get("country_code") or "IN",
             "message": msg_text,
             "doctor_name": payload.get("doctor_name", "") or "",
             "source": "voice_agent",
@@ -571,6 +592,8 @@ async def submit_consultation_appointment(data: dict) -> dict:
                     data["last_name"] = lead_info["last_name"]
                 if not data.get("city"):
                     data["city"] = lead_info["city"]
+                if not data.get("country_code") and lead_info.get("country_code"):
+                    data["country_code"] = lead_info["country_code"]
                 if not data.get("pincode") and lead_info.get("pincode"):
                     data["pincode"] = lead_info["pincode"]
                 if not data.get("doctor_name"):
@@ -615,8 +638,21 @@ async def submit_consultation_appointment(data: dict) -> dict:
 
     # Exactly a 10-digit mobile (a '0' / '91' prefix is fine); a longer number is never cut down to 10 digits
     from voice_agent.utils.helpers import normalize_mobile
+    from voice_agent.utils import country_utils as cu
+    country_code = str(data.get("country_code") or "IN").upper()
+    is_intl = cu.is_international(country_code)
     phone = str(data.get("phone", "")).strip()
-    digits_only = normalize_mobile(phone) or ""
+    if is_intl:
+        # International: stored/sent with its dial code, e.g. '+971501234567' (never cut to 10 digits)
+        digits_only = cu.format_e164(cu.normalize_phone(phone, country_code), country_code)
+    else:
+        digits_only = normalize_mobile(phone) or ""
+    if not digits_only and is_intl:
+        return {
+            "status": "error",
+            "missing_field": "phone",
+            "message": f"Cannot submit appointment: a valid {cu.country_name(country_code)} mobile number ({cu.phone_digits_hint(country_code)} digits) is compulsory. Please ask the patient for it again."
+        }
     if not digits_only:
         return {
             "status": "error",
@@ -643,13 +679,18 @@ async def submit_consultation_appointment(data: dict) -> dict:
 
     raw_pincode = str(data.get("pincode", "")).strip()
     digits_pin = "".join(filter(str.isdigit, raw_pincode))
-    if not is_cancel and len(digits_pin) != 6:
+    if is_intl:
+        # Postal codes abroad can be alphanumeric (UK 'SW1A 1AA') or absent (UAE, Qatar): keep as given
+        digits_pin = cu.validate_postal(raw_pincode, country_code) or ""
+        if country_code == "BR" and not digits_pin and not is_cancel:
+            return {"status": "error", "missing_field": "pincode", "message": cu.intl_text("ask_postal", "en", "BR")}
+    elif not is_cancel and len(digits_pin) != 6:
         return {
             "status": "error",
             "missing_field": "pincode",
             "message": "Cannot submit appointment: Area pincode is missing. Please ask the patient for their 6-digit area pincode before submitting."
         }
-    if is_cancel and len(digits_pin) != 6:
+    if is_cancel and not is_intl and len(digits_pin) != 6:
         digits_pin = digits_pin if len(digits_pin) == 6 else "380001"
     data["pincode"] = digits_pin
 
@@ -678,8 +719,8 @@ async def submit_consultation_appointment(data: dict) -> dict:
     data["doctor_name"] = doctor_name
 
     # ⚡ Duplicate Submission Guard: Ignore identical duplicate in-flight requests within 30s ⚡
-    if not data.get("submission_id") and not data.get("is_update") and not data.get("is_cancel") and is_duplicate_submission(digits_only[-10:], doctor_name):
-        print(f"[INFO] Deduplication guard: Submission for {digits_only[-10:]} with {doctor_name} already in progress. Ignoring duplicate.")
+    if not data.get("submission_id") and not data.get("is_update") and not data.get("is_cancel") and is_duplicate_submission(digits_only, doctor_name):
+        print(f"[INFO] Deduplication guard: Submission for {digits_only} with {doctor_name} already in progress. Ignoring duplicate.")
         return {
             "status": "success",
             "message": "Appointment request has already been submitted.",
@@ -707,6 +748,8 @@ async def submit_consultation_appointment(data: dict) -> dict:
         "phone": digits_only,
         "city": city,
         "pincode": digits_pin,
+        "country": cu.country_name(country_code),
+        "country_code": country_code,
         "message": message,
         "doctor_name": doctor_name,
         "is_cancel": is_cancel,

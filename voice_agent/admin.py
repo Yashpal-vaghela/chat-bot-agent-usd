@@ -2,14 +2,19 @@ import os
 from django.contrib import admin
 from django.utils.html import format_html, mark_safe
 from import_export.admin import ImportExportModelAdmin
+from voice_agent.utils.country_utils import format_phone_for_display
 from .models import VoiceRecordingLog, AppointmentSubmission
 
 @admin.register(AppointmentSubmission)
 class AppointmentSubmissionAdmin(ImportExportModelAdmin):
-    list_display = ('id', 'patient_name', 'phone', 'city', 'pincode', 'doctor_name', 'booking_status', 'created_at')
+    list_display = ('id', 'patient_name', 'display_phone', 'city', 'pincode', 'doctor_name', 'booking_status', 'created_at')
     search_fields = ('first_name', 'last_name', 'phone', 'city', 'pincode', 'doctor_name')
     list_filter = ('city', 'doctor_name', 'is_cancel', 'created_at')
     ordering = ('-id',)
+
+    @admin.display(description="Phone", ordering="phone")
+    def display_phone(self, obj):
+        return format_phone_for_display(obj.phone, obj.country_code)
 
     @admin.display(description="Patient Name")
     def patient_name(self, obj):
